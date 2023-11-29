@@ -1,0 +1,12 @@
+# Python compiled files and cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# JetBrains IDEs
+.idea/
+
+# OS generated files
+.DS_Store
+Thumbs.db
