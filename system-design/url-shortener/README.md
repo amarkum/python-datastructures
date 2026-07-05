@@ -1,246 +1,408 @@
-# URL Shortener — System Design
+# URL Shortener — System Design (Detailed)
 
-Design a service like bit.ly or TinyURL: convert long URLs to short codes, redirect in milliseconds, track click analytics.
-
----
-
-## Requirements
-
-### Functional
-- Shorten long URL → short code (e.g. `abc.ly/aB3xK9q`)
-- Redirect short URL → original long URL
-- Optional custom alias
-- Optional expiry date
-- Click analytics (count, referrer, geo)
-
-### Non-Functional
-- Redirect latency **< 10ms** (p99)
-- **100:1 read:write ratio** (redirects >> creates)
-- **100M+** URLs stored
-- **99.99%** availability for redirects
-- Handle **10K+ redirects/second**
+Complete system design for bit.ly/TinyURL — Base62 encoding, sub-millisecond redirects, analytics at 100:1 read:write ratio.
 
 ---
 
-## Capacity Estimation
+## 1. Requirements & Capacity
 
 | Metric | Estimate |
 |--------|----------|
 | New URLs/day | 100M |
-| Redirects/day | 10B (100× writes) |
+| Redirects/day | 10B (100:1 ratio) |
 | Peak redirect QPS | ~120,000/s |
-| Storage | 100M URLs × 500B ≈ **50 GB** (fits one DB) |
-| Analytics/day | 10B events ≈ **2 TB/day** raw → aggregated in batch |
+| Total URLs stored | 100M+ |
+| Storage | 100M × 500B ≈ 50 GB |
+| Analytics events/day | 10B (async, not on hot path) |
 
 ---
 
-## High-Level Architecture
+## 2. High-Level Architecture
 
 ```mermaid
 flowchart TB
     subgraph clients [Clients]
-        Browser[Browser/App]
-        API_Client[API Client]
+        Browser[Browser - redirect]
+        API[API Client - create]
     end
 
-    subgraph edge [Edge]
-        LB[Load Balancer]
+    subgraph edge [Edge Layer]
+        DNS[Route 53]
+        LB[L7 Load Balancer]
+        CDN[CloudFront - hot URLs]
     end
 
     subgraph services [Services]
         Create[Create Service]
         Redirect[Redirect Service]
+        Analytics[Analytics API]
     end
 
-    subgraph async [Async]
+    subgraph async [Async Pipeline]
         Kafka[Kafka]
-        Analytics[Analytics Worker]
-        AggStore[(ClickHouse/BigQuery)]
+        Flink[Flink/Spark Streaming]
+        OLAP[(ClickHouse/BigQuery)]
     end
 
-    subgraph data [Data Layer]
-        Redis[(Redis Cache)]
-        DB[(DynamoDB / Cassandra)]
-        Counter[(Redis Counter)]
+    subgraph storage [Storage Layer]
+        Redis[(Redis Cluster - hot cache)]
+        DB[(DynamoDB Global Tables)]
+        Counter[(Redis Counter - ID gen)]
+        S3[(S3 - analytics archive)]
     end
 
-    API_Client -->|POST /urls| LB --> Create
-    Browser -->|GET /aB3xK9q| LB --> Redirect
+    API -->|POST /urls| LB --> Create
+    Browser -->|GET /abc123| CDN
+    CDN -->|miss| LB --> Redirect
     Create --> Counter
     Create --> DB
     Redirect --> Redis
-    Redirect -->|cache miss| DB
-    Redirect --> Kafka
-    Kafka --> Analytics
-    Analytics --> AggStore
+    Redirect -->|miss| DB
+    Redirect -->|async| Kafka
+    Kafka --> Flink --> OLAP
+    Analytics --> OLAP
 ```
 
 ---
 
-## Core Flows
+## 3. Sequence Diagrams
 
-### 1. Create Short URL
+### 3.1 Create Short URL
 
-**Option A — Counter + Base62 (recommended):**
+```mermaid
+sequenceDiagram
+    participant Client
+    participant Create as Create Service
+    participant Counter as Redis Counter
+    participant DB as DynamoDB
+    participant Cache as Redis Cache
 
-```python
-def create_short_url(long_url):
-    id = redis.incr("global:counter")       # atomic increment
-    code = base62_encode(id)                 # 123456789 → "aB3xK9q"
-    db.put(code, { long_url, created_at, user_id })
-    return f"https://abc.ly/{code}"
-
-# Base62 charset: [a-zA-Z0-9] → 62^7 = 3.5 trillion unique codes
+    Client->>Create: POST /v1/urls { long_url, custom_alias?, expires_at? }
+    Create->>Create: validate URL (not malware, reachable)
+    alt custom alias provided
+        Create->>DB: conditional put (alias must not exist)
+        DB-->>Create: success / ConditionalCheckFailed
+    else auto-generate
+        Create->>Counter: INCR global:url_counter
+        Counter-->>Create: id = 123456789
+        Create->>Create: code = base62(id) = "aB3xK9q"
+        Create->>DB: put(short_code, long_url, metadata)
+    end
+    Create->>Cache: SET url:{code} long_url EX 3600
+    Create-->>Client: { short_url: "https://abc.ly/aB3xK9q", code, expires_at }
 ```
 
-**Option B — Hash-based:**
+### 3.2 Redirect (Hot Path)
 
-```python
-def create_short_url(long_url):
-    hash = md5(long_url)[:7]
-    code = base62_encode(int(hash, 16))
-    if db.exists(code):
-        code = code + salt_and_retry()       # collision handling
-    db.put(code, long_url)
-    return code
+```mermaid
+sequenceDiagram
+    participant Browser
+    participant CDN
+    participant Redirect as Redirect Service
+    participant Redis
+    participant DB as DynamoDB
+    participant Kafka
+
+    Browser->>CDN: GET /aB3xK9q
+    alt CDN cache hit (top 1% URLs)
+        CDN-->>Browser: 302 Location: long_url
+    else CDN miss
+        Browser->>Redirect: GET /aB3xK9q
+        Redirect->>Redis: GET url:aB3xK9q
+        alt Redis hit (80%+)
+            Redis-->>Redirect: long_url
+        else Redis miss
+            Redirect->>DB: GET short_code=aB3xK9q
+            DB-->>Redirect: long_url
+            Redirect->>Redis: SET url:aB3xK9q long_url EX 3600
+        end
+        Redirect->>Kafka: ClickEvent (async, non-blocking)
+        Redirect-->>Browser: HTTP 302 Location: long_url
+    end
 ```
-
-| Approach | Pros | Cons |
-|----------|------|------|
-| Counter + Base62 | No collisions, predictable length | Needs coordinated counter |
-| Hash | Stateless, dedup same URL | Collision handling needed |
-
-### 2. Redirect (hot path — optimize heavily)
-
-```
-GET /aB3xK9q
-
-Redirect Service:
-  1. Redis GET url:{aB3xK9q}
-     → HIT: 302 redirect immediately (< 1ms)
-  2. MISS: DynamoDB GET → populate Redis (TTL 1h) → 302 redirect
-  3. Async: publish ClickEvent to Kafka (don't block redirect)
-
-Response: HTTP 302 Location: https://original-long-url.com/...
-```
-
-**301 vs 302:**
-| Code | Behavior | Use when |
-|------|----------|----------|
-| 302 | Temporary — browser doesn't cache | Need click analytics every time |
-| 301 | Permanent — browser caches forever | Permanent links, SEO matters |
-
-### 3. Analytics (async)
-
-```
-Kafka ClickEvent { code, timestamp, ip, user_agent, referrer, geo }
-  → Analytics Worker → aggregate hourly
-  → ClickHouse/BigQuery:
-      code | date | clicks | top_countries | top_referrers
-```
-
-Never block redirect for analytics.
 
 ---
 
-## Data Model
+## 4. Database Schema (Detailed)
 
-### DynamoDB / Cassandra
+### 4.1 DynamoDB Table Design
 
 ```
-short_urls (
-  short_code    VARCHAR PRIMARY KEY,    -- "aB3xK9q"
-  long_url      TEXT,
-  user_id       BIGINT,
-  created_at    TIMESTAMP,
-  expires_at    TIMESTAMP,              -- null = never
-  click_count   BIGINT                  -- denormalized counter
-)
+Table: short_urls
+Partition Key: short_code (String)
+Sort Key: none (single item per code)
+
+Attributes:
+  short_code     String    PK   "aB3xK9q"
+  long_url       String         "https://example.com/very/long/path?param=1"
+  user_id        Number         42
+  created_at     Number         1700000000 (unix timestamp)
+  expires_at     Number         null | unix timestamp
+  click_count    Number         1523 (denormalized)
+  is_active      Boolean        true
+  custom_alias   Boolean        false
+
+GSI: user_urls_index
+  PK: user_id
+  SK: created_at
+  Purpose: "list all URLs created by user X"
+```
+
+### 4.2 ER Diagram
+
+```mermaid
+erDiagram
+    USERS ||--o{ SHORT_URLS : creates
+    SHORT_URLS ||--o{ CLICK_EVENTS : generates
+
+    USERS {
+        bigint user_id PK
+        varchar email UK
+        varchar api_key UK
+        int url_count
+        timestamp created_at
+    }
+
+    SHORT_URLS {
+        varchar short_code PK
+        text long_url
+        bigint user_id FK
+        timestamp created_at
+        timestamp expires_at
+        bigint click_count
+        boolean is_active
+    }
+
+    CLICK_EVENTS {
+        varchar short_code FK
+        timestamp clicked_at
+        varchar ip_hash
+        varchar country
+        varchar referrer
+        varchar user_agent
+    }
+```
+
+### 4.3 ClickHouse Analytics Schema
+
+```sql
+CREATE TABLE click_events (
+    short_code    String,
+    clicked_at    DateTime,
+    ip_hash       String,       -- SHA-256 of IP (privacy)
+    country       LowCardinality(String),
+    city          LowCardinality(String),
+    referrer      String,
+    user_agent    String,
+    device_type   LowCardinality(String)  -- mobile/desktop/bot
+) ENGINE = MergeTree()
+PARTITION BY toYYYYMM(clicked_at)
+ORDER BY (short_code, clicked_at);
+
+-- Materialized view for hourly aggregates
+CREATE MATERIALIZED VIEW clicks_hourly AS
+SELECT
+    short_code,
+    toStartOfHour(clicked_at) AS hour,
+    count() AS clicks,
+    uniq(ip_hash) AS unique_visitors
+FROM click_events
+GROUP BY short_code, hour;
+```
+
+---
+
+## 5. Base62 Encoding & Hashing
+
+```mermaid
+flowchart LR
+    subgraph create [Create Path]
+        ID[Counter ID<br/>123456789] --> B62[Base62 Encode]
+        B62 --> Code["aB3xK9q<br/>(7 chars)"]
+    end
+
+    subgraph charset [Base62 Charset]
+        C["a-z (26) + A-Z (26) + 0-9 (10) = 62 chars"]
+    end
+
+    subgraph capacity [Capacity]
+        Cap["62^7 = 3.5 trillion URLs<br/>62^8 = 218 trillion"]
+    end
+```
+
+**Base62 encoding (Python):**
+```python
+CHARS = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+
+def encode(num: int) -> str:
+    if num == 0: return CHARS[0]
+    result = []
+    while num:
+        result.append(CHARS[num % 62])
+        num //= 62
+    return ''.join(reversed(result))
+
+encode(123456789)  # → "aB3xK9q"
+decode("aB3xK9q")  # → 123456789
+```
+
+**Hash-based alternative:**
+```python
+import hashlib
+
+def hash_code(long_url: str, salt: str = "") -> str:
+    h = hashlib.md5((long_url + salt).encode()).hexdigest()
+    return encode(int(h[:12], 16))[:7]
+
+# Collision handling:
+# if db.exists(code): code = hash_code(long_url, salt=str(attempt))
+```
+
+| Method | Pros | Cons |
+|--------|------|------|
+| Counter + Base62 | Zero collisions, sequential | Needs Redis INCR (single point) |
+| MD5/SHA hash | Stateless, dedup same URL | Collision handling needed |
+| UUID truncate | Simple | Not URL-friendly, random length |
+
+---
+
+## 6. Indexing Strategy
+
+### DynamoDB
+| Access Pattern | Key | Index |
+|-------------|-----|-------|
+| Redirect by code | `short_code` PK | Primary — O(1) |
+| User's URLs | `user_id` | GSI `user_urls_index` |
+| Expired URL cleanup | `expires_at` | GSI + TTL attribute |
+
+**DynamoDB TTL for auto-expiry:**
+```json
+{
+  "short_code": "aB3xK9q",
+  "long_url": "https://...",
+  "expires_at": 1700086400,
+  "ttl": 1700086400   ← DynamoDB auto-deletes when ttl < now
+}
 ```
 
 ### Redis
+| Key | Type | TTL | Purpose |
+|-----|------|-----|---------|
+| `url:{code}` | STRING | 1 hour | Hot redirect cache |
+| `global:url_counter` | STRING (INCR) | — | ID generation |
+| `hot:urls` | ZSET | — | Top 1000 URLs by clicks (CDN pre-warm) |
+| `ratelimit:{api_key}` | STRING | 1 hour | Token bucket rate limit |
 
+### ClickHouse (Analytics)
+```sql
+-- Partition by month, order by (short_code, clicked_at)
+-- Fast: clicks per URL per day
+SELECT count() FROM click_events
+WHERE short_code = 'aB3xK9q'
+  AND clicked_at >= today() - 30;
+
+-- Uses: PARTITION BY month + ORDER BY (short_code, clicked_at)
+-- Only scans relevant partitions and short_code range
 ```
-url:{short_code}    → long_url string (TTL 1 hour for hot URLs)
-global:counter      → atomic ID generator
-hot:urls            → sorted set of most clicked (for CDN pre-warm)
+
+---
+
+## 7. Sharding & Load Balancing
+
+```mermaid
+flowchart TB
+    subgraph global [Global]
+        DNS[Route 53 Latency Routing]
+    end
+
+    subgraph region1 [US-East]
+        ALB1[ALB]
+        R1[Redirect Pod × 10]
+        Redis1[(Redis Cluster)]
+    end
+
+    subgraph region2 [EU-West]
+        ALB2[ALB]
+        R2[Redirect Pod × 5]
+        Redis2[(Redis Replica)]
+    end
+
+    subgraph db [Global DB]
+        DDB[(DynamoDB Global Tables<br/>US + EU replicas)]
+    end
+
+    DNS --> ALB1
+    DNS --> ALB2
+    ALB1 --> R1 --> Redis1
+    ALB2 --> R2 --> Redis2
+    R1 --> DDB
+    R2 --> DDB
+```
+
+| Component | Sharding | Notes |
+|-----------|----------|-------|
+| DynamoDB | `short_code` hash | Automatic partitioning |
+| Redis | Hash slot on `code` | Cluster mode, 16384 slots |
+| Kafka analytics | `short_code` partition | Ordered events per URL |
+| CDN | URL path | Edge cache by short code |
+
+---
+
+## 8. Caching Layers
+
+```mermaid
+flowchart LR
+    Request[GET /aB3xK9q] --> CDN{CDN hit?}
+    CDN -->|HIT 60%| Fast[Sub-ms redirect]
+    CDN -->|MISS| Redis{Redis hit?}
+    Redis -->|HIT 35%| Medium[~1ms redirect]
+    Redis -->|MISS 5%| DB[DynamoDB ~5ms]
+    DB --> Populate[Populate Redis + CDN]
+    Populate --> Redirect[302 redirect]
+```
+
+**Cache warming for viral URLs:**
+```
+Kafka click stream → detect URL crossing 1000 clicks/min
+  → pre-warm CDN edge nodes
+  → extend Redis TTL to 24h
+  → add to hot:urls sorted set
 ```
 
 ---
 
-## API Design
+## 9. Security & Encryption
 
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| POST | `/v1/urls` | `{ "long_url": "...", "custom_alias": "...", "expires_at": "..." }` |
-| GET | `/{short_code}` | Redirect (302) |
-| GET | `/v1/urls/{code}/stats` | Click analytics |
-| DELETE | `/v1/urls/{code}` | Deactivate URL |
-
-**Rate limiting:** 100 creates/hour per API key. Redirects unlimited.
-
----
-
-## Scaling Strategies
-
-| Component | Strategy |
-|-----------|----------|
-| Redirect (120K QPS) | Redis cache — 80%+ hit rate, scale Redis cluster |
-| Cache miss | DynamoDB on-demand capacity, DAX accelerator |
-| Create | Low QPS — single region sufficient |
-| Analytics | Kafka buffers spikes, batch write to OLAP |
-| Popular URLs | CDN edge redirect for top 1% URLs |
-| Global | Multi-region DynamoDB global tables |
+| Layer | Method |
+|-------|--------|
+| API traffic | TLS 1.3 |
+| DynamoDB | Encryption at rest (AWS KMS) |
+| Redis | TLS in transit, AUTH password |
+| IP in analytics | SHA-256 hash before storage (GDPR) |
+| Malware URLs | Scan against Google Safe Browsing API on create |
+| Rate limiting | 100 creates/hour per API key (Redis token bucket) |
+| Private URLs | Auth token in redirect: `GET /abc123?token=xyz` |
 
 ---
 
-## Security
+## 10. Interview Q&A
 
-- **TLS** for all endpoints
-- **Rate limiting** on create API (prevent abuse)
-- **URL validation** — block malware/phishing URLs (scan against blacklist)
-- **Private URLs** — auth token required for redirect
-- **No sensitive data** in short codes (don't encode user info)
-
----
-
-## Interview Q&A
-
-**Q: How generate short codes?**  
-A: Global counter + Base62 encoding. 7 chars = 62^7 ≈ 3.5 trillion URLs. Atomic Redis INCR for counter.
+**Q: Counter vs hash for short codes?**  
+A: Counter: no collisions, 7-char Base62 = 3.5T URLs. Hash: stateless but needs collision retry. Production systems use counter (bit.ly) or counter+random suffix.
 
 **Q: How achieve < 10ms redirect?**  
-A: Redis in-memory cache. 80-90% hit rate. Sub-ms on hit. DynamoDB DAX on miss. CDN for viral URLs.
+A: 3-tier cache: CDN (60%) + Redis (35%) + DynamoDB (5%). p99 < 5ms for cache hits. Async analytics never blocks redirect.
 
-**Q: 100:1 read:write — design implications?**  
-A: Optimize redirect path exclusively. Separate read/write services. Async analytics. Cache everything.
+**Q: 301 vs 302?**  
+A: 302 for analytics (every click tracked). 301 for permanent links (browser caches, loses analytics). Most shorteners use 302.
 
-**Q: How handle hash collision?**  
-A: If using hash approach: detect collision on insert, append salt and re-hash. Counter approach avoids this entirely.
+**Q: How scale to 120K QPS?**  
+A: Redirect service is stateless — 20 pods × 6K QPS each. Redis cluster 100K ops/sec. DynamoDB on-demand handles spikes. CDN for top 1% URLs.
 
-**Q: How scale to 10K redirects/sec?**  
-A: Redis cluster (100K+ ops/sec). Stateless redirect servers behind LB. DynamoDB for persistence. Kafka for analytics decoupling.
+**Q: How handle same long URL submitted twice?**  
+A: Hash approach: return existing code (dedup). Counter approach: create new code each time (or optional dedup cache `hash(long_url) → code`).
 
-**Q: Custom alias support?**  
-A: Check uniqueness on create. Store in same table. Reserve premium aliases separately.
-
-**Q: URL expiration?**  
-A: Store `expires_at`. Redirect service checks before redirect. Background job deletes expired entries. Redis TTL mirrors DB expiry.
-
-**Q: How estimate storage for 100M URLs?**  
-A: ~500 bytes/record × 100M = 50 GB. Fits single DynamoDB partition with proper key design. Shard by short_code prefix if needed.
-
----
-
-## Tech Stack Summary
-
-| Layer | Technology |
-|-------|------------|
-| Redirect cache | Redis Cluster |
-| Persistent store | DynamoDB / Cassandra |
-| Analytics | Kafka + ClickHouse |
-| Counter | Redis INCR |
-| API | Go/Node.js (low latency) |
-| CDN | CloudFront (hot URLs) |
+**Q: How generate ID without single point of failure?**  
+A: Redis INCR with backup counter service. Or: pre-allocate ID ranges per server (Server A: 1-1M, Server B: 1M-2M). Or: Snowflake ID generator (timestamp + machine + sequence).
 
 [← Back to index](../README.md)

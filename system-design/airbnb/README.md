@@ -1,42 +1,23 @@
-# Airbnb — System Design
+# Airbnb — System Design (Detailed)
 
-Design a marketplace for short-term rentals: search listings by location/dates, book stays, handle payments, reviews, and host-guest messaging.
-
----
-
-## Requirements
-
-### Functional
-- Search listings (location, dates, guests, filters)
-- View listing details + availability calendar
-- Book stay (no double-booking)
-- Payments with escrow (charge guest, pay host after check-in)
-- Reviews (guest ↔ host)
-- Host/guest messaging
-
-### Non-Functional
-- Search latency **< 200ms**
-- **No double-booking** — strong consistency (CP)
-- Global listings (multi-currency, multi-language)
-- Peak season traffic spikes (holidays)
-- PCI-compliant payments
+Complete system design for a short-term rental marketplace — Elasticsearch geo search, booking consistency, payment escrow, reviews.
 
 ---
 
-## Capacity Estimation
+## 1. Requirements & Capacity
 
 | Metric | Estimate |
 |--------|----------|
-| Listings | 7M active |
+| Active listings | 7M |
 | Searches/day | 500M |
 | Bookings/day | 1M |
 | Peak search QPS | ~10,000/s |
-| Listing photos | 7M × 20 photos × 1MB ≈ **140 TB** (S3 + CDN) |
-| Booking records | 1M/day × 365 × 1KB ≈ **365 GB/year** |
+| Listing photos | 7M × 20 × 1MB ≈ 140 TB |
+| Booking records/year | 365M × 1KB ≈ 365 GB |
 
 ---
 
-## High-Level Architecture
+## 2. High-Level Architecture
 
 ```mermaid
 flowchart TB
@@ -46,12 +27,12 @@ flowchart TB
     end
 
     subgraph edge [Edge]
-        CDN[CDN - listing photos]
-        LB[Load Balancer]
-        API[API Gateway]
+        CDN[CloudFront - listing photos]
+        LB[L7 ALB]
+        GW[API Gateway]
     end
 
-    subgraph services [Services]
+    subgraph services [Microservices]
         Search[Search Service]
         List[Listing Service]
         Book[Booking Service]
@@ -59,232 +40,454 @@ flowchart TB
         Pay[Payment Service]
         Review[Review Service]
         Msg[Messaging Service]
+        Host[Host Management]
         Notify[Notification Service]
     end
 
-    subgraph data [Data Layer]
-        ES[(Elasticsearch)]
-        PG[(PostgreSQL)]
-        Redis[(Redis)]
-        S3[(S3)]
+    subgraph async [Async]
         Kafka[Kafka]
-        Stripe[Stripe]
+        CDC[CDC Connector]
+    end
+
+    subgraph storage [Storage]
+        ES[(Elasticsearch Cluster)]
+        PG[(PostgreSQL Primary)]
+        PGReplica[(PostgreSQL Replicas)]
+        Redis[(Redis Cluster)]
+        S3[(S3 - photos)]
+    end
+
+    subgraph external [External]
+        Stripe[Stripe Connect]
+        Maps[Google Maps]
     end
 
     Guest --> CDN
-    Guest --> LB --> API
+    Guest --> LB --> GW
     Host --> LB
-    API --> Search
-    API --> Book
-    API --> List
-    Search --> ES
-    Search --> Redis
-    Book --> PG
+    GW --> Search --> ES
+    GW --> Search --> Redis
+    GW --> Book --> PG
+    GW --> List --> S3
     Book --> Redis
     Cal --> PG
-    List --> S3
     Book --> Kafka
-    Kafka --> Pay
+    PG --> CDC --> Kafka --> ES
+    Kafka --> Pay --> Stripe
     Kafka --> Notify
-    Pay --> Stripe
+    PG --> PGReplica
 ```
 
 ---
 
-## Core Flows
+## 3. Sequence Diagrams
 
-### 1. Search Listings
+### 3.1 Search Flow
 
-```
-GET /v1/search?lat=48.8566&lng=2.3522&check_in=2026-07-01&check_out=2026-07-05&guests=2
+```mermaid
+sequenceDiagram
+    participant Guest
+    participant Search as Search Service
+    participant Redis
+    participant ES as Elasticsearch
+    participant CDN
 
-Search Service:
-  1. Check Redis cache for popular city+date queries
-  2. Elasticsearch query:
-     {
-       "geo_distance": { "distance": "20km", "location": { lat, lng } },
-       "filter": [
-         { "range": { "price": { "lte": max_price } } },
-         { "term": { "amenities": "wifi" } },
-         { "bool": { "must_not": { "terms": { "blocked_dates": ["2026-07-01"...] } } } }
-       ]
-     }
-  3. Rank by: relevance score, rating, Superhost boost, price
-  4. Return paginated results with CDN photo URLs
-```
-
-**Why Elasticsearch?**
-- Geo queries (lat/lng radius)
-- Full-text (description, neighborhood)
-- Faceted filters (price, amenities, room type)
-- Scoring/ranking built-in
-
-### 2. Booking Flow (CP — must be consistent)
-
-```
-POST /v1/bookings { listing_id, check_in, check_out, guest_id, total_price }
-
-Booking Service:
-  BEGIN TRANSACTION (PostgreSQL)
-    1. SELECT * FROM availability
-       WHERE listing_id = X
-       AND date BETWEEN check_in AND check_out
-       FOR UPDATE                          ← row lock!
-
-    2. IF any date is 'booked': ROLLBACK → return 409 Conflict
-
-    3. INSERT booking record
-    4. UPDATE availability SET status='booked' for each date
-  COMMIT
-
-  Publish BookingCreated → Kafka → Payment Service
+    Guest->>Search: GET /search?lat=48.85&lng=2.35&check_in=Jul-01&check_out=Jul-05&guests=2
+    Search->>Redis: GET cache:search:paris:2026-07-01:2guests
+    alt cache hit
+        Redis-->>Search: cached results
+    else cache miss
+        Search->>ES: geo + filter query
+        ES-->>Search: ranked listing_ids
+        Search->>Redis: SET cache TTL 5min
+    end
+        Search-->>Guest: { listings[], total, facets }
+    Guest->>CDN: GET listing photos (parallel)
 ```
 
-**Alternative — Optimistic locking:**
-```sql
-UPDATE availability SET status='booked', version=version+1
-WHERE listing_id=X AND date=D AND version=expected_version
--- IF rows_affected = 0 → conflict, retry or fail
-```
+### 3.2 Booking Flow (CP — Strong Consistency)
 
-### 3. Payment Escrow
+```mermaid
+sequenceDiagram
+    participant Guest
+    participant Book as Booking Service
+    participant PG as PostgreSQL
+    participant Redis
+    participant Kafka
+    participant Pay as Payment Service
+    participant Stripe
 
-```
-Kafka: BookingCreated → Payment Service:
-  1. Charge guest via Stripe (with idempotency key)
-  2. Hold funds in escrow (don't transfer to host yet)
-  3. On check-in day → transfer to host minus service fee
-  4. On cancellation → refund per cancellation policy
-```
-
-### 4. Reviews
-
-```
-Both guest and host can review within 14 days of checkout.
-Reviews are blind until both submit (or 14 days pass).
-Once published → immutable.
-Kafka worker updates listing aggregate rating in Elasticsearch.
+    Guest->>Book: POST /bookings {listing_id, check_in, check_out, guests}
+    Book->>PG: BEGIN TRANSACTION
+    Book->>PG: SELECT availability FOR UPDATE (row lock)
+    PG-->>Book: dates available ✓
+    Book->>PG: INSERT booking CONFIRMED
+    Book->>PG: UPDATE availability SET status=booked
+    Book->>PG: COMMIT
+    Book->>Redis: INVALIDATE cache:listing:{id}:availability
+    Book->>Kafka: BookingConfirmed event
+    Book-->>Guest: { booking_id, total_price }
+    Kafka->>Pay: consume event
+    Pay->>Stripe: charge(idempotency_key, amount)
+    Stripe-->>Pay: payment_intent_id
+    Pay->>PG: INSERT payment SUCCESS
 ```
 
 ---
 
-## Data Model
+## 4. Database Schema (Detailed)
 
-### PostgreSQL
+### 4.1 ER Diagram
 
-```sql
-listings (
-  listing_id    BIGINT PRIMARY KEY,
-  host_id       BIGINT,
-  title         VARCHAR,
-  description   TEXT,
-  lat           DECIMAL, lng DECIMAL,
-  price_per_night DECIMAL,
-  max_guests    INT,
-  amenities     JSONB
-)
+```mermaid
+erDiagram
+    USERS ||--o{ LISTINGS : hosts
+    USERS ||--o{ BOOKINGS : makes
+    LISTINGS ||--o{ BOOKINGS : receives
+    LISTINGS ||--o{ AVAILABILITY : has
+    LISTINGS ||--o{ LISTING_PHOTOS : has
+    LISTINGS ||--o{ REVIEWS : receives
+    BOOKINGS ||--|| PAYMENTS : has
+    BOOKINGS ||--o{ REVIEWS : generates
 
-availability (
-  listing_id    BIGINT,
-  date          DATE,
-  status        ENUM('available','booked','blocked'),
-  booking_id    UUID,
-  version       INT,              -- optimistic lock
-  PRIMARY KEY (listing_id, date)
-)
+    USERS {
+        bigint user_id PK
+        varchar email UK
+        varchar name
+        enum role
+        varchar stripe_account_id
+        timestamp created_at
+    }
 
-bookings (
-  booking_id    UUID PRIMARY KEY,
-  listing_id    BIGINT,
-  guest_id      BIGINT,
-  check_in      DATE,
-  check_out     DATE,
-  total_price   DECIMAL,
-  status        ENUM('pending','confirmed','cancelled','completed'),
-  idempotency_key VARCHAR UNIQUE
-)
+    LISTINGS {
+        bigint listing_id PK
+        bigint host_id FK
+        varchar title
+        text description
+        decimal lat
+        decimal lng
+        decimal price_per_night
+        int max_guests
+        int bedrooms
+        jsonb amenities
+        decimal rating_avg
+        int review_count
+        enum status
+    }
+
+    AVAILABILITY {
+        bigint listing_id PK
+        date date PK
+        enum status
+        uuid booking_id FK
+        int version
+    }
+
+    BOOKINGS {
+        uuid booking_id PK
+        bigint listing_id FK
+        bigint guest_id FK
+        date check_in
+        date check_out
+        int guests
+        decimal total_price
+        decimal service_fee
+        enum status
+        varchar idempotency_key UK
+        timestamp created_at
+    }
+
+    PAYMENTS {
+        uuid payment_id PK
+        uuid booking_id FK UK
+        decimal amount
+        enum status
+        varchar stripe_intent_id UK
+        timestamp created_at
+    }
+
+    REVIEWS {
+        uuid review_id PK
+        uuid booking_id FK
+        bigint reviewer_id
+        bigint reviewee_id
+        int score
+        text comment
+        enum type
+        timestamp created_at
+    }
 ```
 
-### Elasticsearch index
+### 4.2 PostgreSQL DDL
+
+```sql
+CREATE TABLE listings (
+    listing_id      BIGSERIAL PRIMARY KEY,
+    host_id         BIGINT NOT NULL REFERENCES users(user_id),
+    title           VARCHAR(200) NOT NULL,
+    description     TEXT,
+    lat             DECIMAL(10, 8) NOT NULL,
+    lng             DECIMAL(11, 8) NOT NULL,
+    price_per_night DECIMAL(10, 2) NOT NULL,
+    max_guests      INT NOT NULL DEFAULT 2,
+    bedrooms        INT,
+    bathrooms       INT,
+    amenities       JSONB DEFAULT '[]',
+    house_rules     JSONB DEFAULT '[]',
+    rating_avg      DECIMAL(3, 2) DEFAULT 0,
+    review_count    INT DEFAULT 0,
+    status          VARCHAR(20) DEFAULT 'active',
+    created_at      TIMESTAMP DEFAULT NOW()
+);
+
+CREATE TABLE availability (
+    listing_id      BIGINT NOT NULL,
+    date            DATE NOT NULL,
+    status          VARCHAR(20) NOT NULL DEFAULT 'available',
+    booking_id      UUID,
+    version         INT NOT NULL DEFAULT 0,
+    PRIMARY KEY (listing_id, date)
+);
+
+CREATE TABLE bookings (
+    booking_id      UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    listing_id      BIGINT NOT NULL REFERENCES listings(listing_id),
+    guest_id        BIGINT NOT NULL REFERENCES users(user_id),
+    check_in        DATE NOT NULL,
+    check_out       DATE NOT NULL,
+    guests          INT NOT NULL,
+    total_price     DECIMAL(10, 2) NOT NULL,
+    service_fee     DECIMAL(10, 2),
+    host_payout     DECIMAL(10, 2),
+    status          VARCHAR(20) NOT NULL DEFAULT 'pending',
+    idempotency_key VARCHAR(100) UNIQUE NOT NULL,
+    created_at      TIMESTAMP DEFAULT NOW(),
+    confirmed_at    TIMESTAMP,
+    cancelled_at    TIMESTAMP
+);
+```
+
+### 4.3 Indexing Strategy — PostgreSQL
+
+| Index | Columns | Type | Purpose |
+|-------|---------|------|---------|
+| PK | `listing_id` | B-tree | Primary lookup |
+| `idx_listings_host` | `(host_id, status)` | B-tree composite | Host dashboard: my listings |
+| `idx_listings_location` | `(lat, lng)` | GiST (PostGIS) | Fallback geo query |
+| `idx_listings_rating` | `(rating_avg DESC)` | B-tree | Sort by rating |
+| `idx_availability_listing_date` | `(listing_id, date, status)` | B-tree composite | Booking availability check |
+| `idx_bookings_guest` | `(guest_id, created_at DESC)` | B-tree composite | Guest trip history |
+| `idx_bookings_listing` | `(listing_id, check_in)` | B-tree composite | Host calendar view |
+| `idx_bookings_idempotency` | `(idempotency_key)` | B-tree UNIQUE | Prevent duplicate bookings |
+| `idx_reviews_listing` | `(listing_id, created_at DESC)` | B-tree composite | Listing reviews page |
+
+**Critical booking index:**
+```sql
+-- This query runs inside a transaction with FOR UPDATE:
+SELECT date, status, version FROM availability
+WHERE listing_id = $1
+  AND date BETWEEN $2 AND $3
+FOR UPDATE;
+
+-- idx_availability_listing_date makes this O(log N + days)
+-- NOT a full table scan
+```
+
+**GiST index for PostGIS (backup geo search):**
+```sql
+CREATE INDEX idx_listings_geo ON listings
+USING GIST (ST_MakePoint(lng, lat));
+-- Used when Elasticsearch is down (fallback)
+```
+
+---
+
+## 5. Elasticsearch Index Design
 
 ```json
 {
-  "listing_id": 12345,
-  "location": { "lat": 48.8566, "lon": 2.3522 },
-  "price": 120,
-  "rating": 4.8,
-  "amenities": ["wifi", "kitchen", "pool"],
-  "blocked_dates": ["2026-07-01", "2026-07-02"],
-  "title": "Cozy Paris apartment"
+  "settings": {
+    "number_of_shards": 5,
+    "number_of_replicas": 2,
+    "analysis": {
+      "analyzer": {
+        "listing_analyzer": {
+          "type": "custom",
+          "tokenizer": "standard",
+          "filter": ["lowercase", "stemmer"]
+        }
+      }
+    }
+  },
+  "mappings": {
+    "properties": {
+      "listing_id":    { "type": "long" },
+      "title":         { "type": "text", "analyzer": "listing_analyzer" },
+      "description":   { "type": "text", "analyzer": "listing_analyzer" },
+      "location":      { "type": "geo_point" },
+      "price":         { "type": "float" },
+      "rating":        { "type": "float" },
+      "review_count":  { "type": "integer" },
+      "max_guests":    { "type": "integer" },
+      "bedrooms":      { "type": "integer" },
+      "amenities":     { "type": "keyword" },
+      "property_type": { "type": "keyword" },
+      "blocked_dates": { "type": "date", "format": "yyyy-MM-dd" },
+      "instant_book":  { "type": "boolean" },
+      "superhost":     { "type": "boolean" },
+      "photo_url":     { "type": "keyword", "index": false }
+    }
+  }
 }
 ```
 
-Synced from PostgreSQL via Kafka CDC (Change Data Capture).
+**Search query example:**
+```json
+{
+  "query": {
+    "bool": {
+      "filter": [
+        { "geo_distance": {
+            "distance": "20km",
+            "location": { "lat": 48.8566, "lon": 2.3522 }
+        }},
+        { "range": { "price": { "lte": 200 } } },
+        { "term": { "max_guests": { "gte": 2 } } },
+        { "terms": { "amenities": ["wifi", "kitchen"] } },
+        { "bool": { "must_not": {
+            "terms": { "blocked_dates": ["2026-07-01","2026-07-02","2026-07-03","2026-07-04"] }
+        }}}
+      ],
+      "should": [
+        { "rank_feature": { "field": "rating" } },
+        { "term": { "superhost": { "value": true, "boost": 1.5 } } }
+      ]
+    }
+  },
+  "sort": [{ "_score": "desc" }, { "price": "asc" }],
+  "from": 0, "size": 20
+}
+```
+
+### 5.1 Elasticsearch Indexing & Sharding
+
+```mermaid
+flowchart LR
+    PG[(PostgreSQL)] -->|CDC Debezium| Kafka
+    Kafka --> ESWorker[ES Index Worker]
+    ESWorker --> ES1[ES Shard 1<br/>listing_id 0-1.4M]
+    ESWorker --> ES2[ES Shard 2<br/>listing_id 1.4M-2.8M]
+    ESWorker --> ES3[ES Shard 3<br/>...]
+```
+
+| ES Concept | Configuration | Reason |
+|-----------|--------------|--------|
+| Shards | 5 primary | 7M docs / 5 = 1.4M per shard (optimal) |
+| Replicas | 2 | High search QPS, fault tolerance |
+| Refresh interval | 5s | Near real-time availability updates |
+| Field: location | geo_point | Native geo_distance queries |
+| Field: blocked_dates | date array | Filter unavailable dates in query |
 
 ---
 
-## API Design
+## 6. Sharding Strategy
 
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/v1/search` | Search with geo + filters |
-| GET | `/v1/listings/{id}` | Listing detail |
-| GET | `/v1/listings/{id}/availability` | Calendar |
-| POST | `/v1/bookings` | Create booking |
-| POST | `/v1/bookings/{id}/pay` | Process payment |
-| DELETE | `/v1/bookings/{id}` | Cancel |
-| POST | `/v1/listings/{id}/reviews` | Submit review |
-| GET | `/v1/conversations` | Messaging |
+```mermaid
+flowchart TB
+    subgraph pg [PostgreSQL]
+        Primary[(Primary - writes)]
+        R1[(Replica 1 - reads)]
+        R2[(Replica 2 - reads)]
+    end
+
+    subgraph es [Elasticsearch]
+        ES1[Shard 1]
+        ES2[Shard 2]
+        ES3[Shard 3]
+    end
+
+    Book[Booking Service] -->|writes| Primary
+    Search[Search Service] -->|reads| R1
+    Search -->|reads| R2
+    Search --> ES1
+    Search --> ES2
+    Primary -->|CDC| ES1
+```
+
+| Data | Sharding | Reason |
+|------|----------|--------|
+| Listings | ES hash routing | Even search distribution |
+| Bookings | PostgreSQL (single primary + replicas) | Strong consistency needed |
+| Availability | Co-located with listing_id | Same shard as listing |
+| Photos | S3 prefix `listings/{listing_id}/` | No hot partitions |
+| Search cache | Redis hash slot by query hash | Popular city queries cached |
 
 ---
 
-## Scaling Strategies
+## 7. Payment Escrow Flow
 
-| Component | Strategy |
-|-----------|----------|
-| Search | Elasticsearch cluster, cache popular queries in Redis |
-| Booking | PostgreSQL with connection pooling, shard by region if needed |
-| Photos | S3 + CDN — never serve from origin |
-| Peak season | Auto-scale search service, pre-warm ES caches |
-| Payments | Async via Kafka — don't block booking response |
+```mermaid
+stateDiagram-v2
+    [*] --> ChargeGuest : Booking confirmed
+    ChargeGuest --> FundsHeld : Stripe charge success
+    FundsHeld --> ReleasedToHost : Check-in day
+    FundsHeld --> RefundedToGuest : Cancellation
+    ReleasedToHost --> [*]
+    RefundedToGuest --> [*]
+```
+
+**Stripe Connect flow:**
+```
+1. Guest charged $500 (total) on booking
+2. $500 held in Airbnb Stripe platform account
+3. Check-in day: transfer $420 to host Stripe Connect account
+4. $80 retained as Airbnb service fee (14% + guest fee)
+5. Cancellation: refund per policy (flexible/moderate/strict)
+```
 
 ---
 
-## Interview Q&A
+## 8. Load Balancing & Caching
 
-**Q: Why Elasticsearch instead of PostgreSQL for search?**  
-A: Geo-radius queries, full-text search, faceted filters, relevance scoring — all native in ES. SQL geo queries (PostGIS) don't scale to 500M searches/day with complex filters.
+```mermaid
+flowchart TB
+    User[User] --> DNS[Route 53]
+    DNS --> ALB[ALB - L7]
+    ALB --> Search1[Search Pod 1]
+    ALB --> Search2[Search Pod 2]
+    ALB --> Book1[Booking Pod 1]
+    Search1 --> Redis[(Redis - search cache)]
+    Search1 --> ES[(Elasticsearch)]
+    Book1 --> PG[(PostgreSQL Primary)]
+```
+
+| Cache Key | TTL | Invalidation |
+|-----------|-----|-------------|
+| `search:{city}:{dates}:{guests}` | 5 min | On new booking in city |
+| `listing:{id}:detail` | 10 min | On listing update |
+| `listing:{id}:availability:{month}` | 2 min | On booking/cancellation |
+| `host:{id}:dashboard` | 5 min | On new booking |
+
+---
+
+## 9. Interview Q&A
+
+**Q: Why Elasticsearch over PostgreSQL for search?**  
+A: Native geo_distance queries, full-text with scoring, faceted filters (amenities, price range), handles 10K QPS search. PostGIS works but doesn't scale as well for complex ranked search.
 
 **Q: How prevent double-booking?**  
-A: Pessimistic row lock (`SELECT FOR UPDATE`) in transaction. Only one booking transaction can hold the lock for overlapping dates. Return 409 if conflict.
+A: `SELECT FOR UPDATE` row lock inside PostgreSQL transaction. Only one booking transaction can lock overlapping dates. Return HTTP 409 if conflict.
 
-**Q: How sync availability between PostgreSQL and Elasticsearch?**  
-A: CDC (Change Data Capture) via Kafka. On booking, PG update → Kafka event → ES index updated with new blocked_dates.
+**Q: How sync availability to Elasticsearch?**  
+A: CDC (Change Data Capture) via Debezium — PostgreSQL WAL → Kafka → ES index worker updates `blocked_dates` field. Near real-time (5s lag).
 
-**Q: How handle cancellation and refund?**  
-A: State machine: CONFIRMED → CANCELLED. Refund amount based on policy (flexible/moderate/strict). Stripe refund API. Release availability dates in same transaction.
+**Q: Optimistic vs pessimistic locking?**  
+A: Pessimistic (`FOR UPDATE`) for booking — simpler, guarantees no conflict. Optimistic (version column) for listing edits — higher concurrency, retry on conflict.
 
-**Q: How scale holiday traffic spikes?**  
-A: Redis cache for top 100 city searches. ES read replicas. CDN absorbs photo traffic. Booking service auto-scales (stateless except DB).
+**Q: CP or AP?**  
+A: CP for bookings and payments. AP acceptable for search results (5-min cache staleness OK) and review counts.
 
-**Q: CP or AP for booking?**  
-A: **CP** — must never double-book. Better to reject a booking (unavailable) than confirm two guests for same dates.
-
-**Q: How handle multi-currency?**  
-A: Store prices in listing's local currency. Convert at booking time using daily exchange rate API. Charge guest in their currency via Stripe.
-
----
-
-## Tech Stack Summary
-
-| Layer | Technology |
-|-------|------------|
-| Search | Elasticsearch |
-| Bookings | PostgreSQL |
-| Cache | Redis |
-| Photos | S3 + CloudFront |
-| Events | Apache Kafka |
-| Payments | Stripe Connect |
-| API | Ruby on Rails / Java microservices |
+**Q: How handle holiday search spikes?**  
+A: Redis cache for top 100 city+date combos. ES read replicas auto-scale. CDN for photos. Booking service rate-limited separately from search.
 
 [← Back to index](../README.md)
