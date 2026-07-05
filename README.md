@@ -8,9 +8,18 @@ A hands-on Python repo for **data structures** and **interview topics**. Every f
 
 ## System design
 
-Full interview guide in one place — load balancing, sharding, indexing, databases, API, hashing, encryption, and how **Uber, Instagram, Facebook, Airbnb, URL Shortener, and Real-Time Coding** platforms are built:
+Company-wise detailed designs — each product in its own folder:
 
-→ **[system-design/README.md](./system-design/README.md)**
+| Product | Folder |
+|---------|--------|
+| Uber | [system-design/uber/](./system-design/uber/) |
+| Instagram | [system-design/instagram/](./system-design/instagram/) |
+| Facebook | [system-design/facebook/](./system-design/facebook/) |
+| Airbnb | [system-design/airbnb/](./system-design/airbnb/) |
+| URL Shortener | [system-design/url-shortener/](./system-design/url-shortener/) |
+| Real-Time Coding | [system-design/realtime-coding/](./system-design/realtime-coding/) |
+
+Index + building blocks: [system-design/README.md](./system-design/README.md)
 
 ---
 
