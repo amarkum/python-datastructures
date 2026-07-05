@@ -1,79 +1,80 @@
 # Exception Handling
 
+Structured error handling with try/except/else/finally, custom exceptions, and exception chaining.
+
 ## Files
 
 | File | Description |
 |------|-------------|
-| `example.py` | try/except/else/finally, custom exceptions, and chaining |
-
-### example.py walkthrough
-
-| Symbol | Type | Description |
-|--------|------|-------------|
-| `ValidationError` | Exception class | Custom error with `field` attribute |
-| `divide(a, b)` | Function | Raises `ZeroDivisionError` with custom message |
-| `parse_age(value)` | Function | Chains `ValueError` into `ValidationError` via `raise ... from` |
-| `read_config(path)` | Function | Demonstrates `else` and `finally` clauses |
-| `Resource` | Class | Context manager used alongside exception handling |
+| `example.py` | Custom exceptions, chaining, else/finally |
 
 ---
 
-## Basics
+## Descriptive Example
+
+### Scenario
+
+Parse user age from input — convert errors into a domain-specific `ValidationError` with clear context.
+
+```python
+class ValidationError(Exception):
+    def __init__(self, field, message):
+        self.field = field
+        super().__init__(f"{field}: {message}")
+
+def parse_age(value):
+    try:
+        age = int(value)
+    except ValueError as e:
+        raise ValidationError("age", f"must be integer, got {value!r}") from e
+
+    if age < 0 or age > 150:
+        raise ValidationError("age", "must be between 0 and 150")
+    return age
+
+parse_age("twenty")   # ValidationError: age: must be integer, got 'twenty'
+                      # __cause__ links to original ValueError
+```
+
+### try/except/else/finally flow
 
 ```python
 try:
-    risky_operation()
+    result = risky_operation()
 except SpecificError as e:
     handle(e)
 else:
-    # runs only if no exception was raised
-    on_success()
+    on_success(result)      # runs only if NO exception
 finally:
-    # always runs (cleanup)
-    cleanup()
+    cleanup()               # ALWAYS runs
 ```
 
-## Why interviewers ask
+---
 
-- Robust error handling is essential in production code
-- `raise ... from` for exception chaining
-- Custom exception hierarchies for domain errors
+## Interview Q&A
 
-## Key concepts
+**Q1: Difference between `except Exception` and bare `except:`?**  
+A: Bare `except:` catches everything including `KeyboardInterrupt` and `SystemExit`. Never use it. Catch specific exceptions or `Exception` when re-raising.
 
-| Concept | Detail |
-|---------|--------|
-| `except Exception` | Catches broad exceptions — avoid unless re-raising |
-| `raise ... from cause` | Chain exceptions; preserves traceback |
-| `else` clause | Runs if try block succeeds (no except triggered) |
-| `finally` | Always executes; use for cleanup |
-| Custom exceptions | Subclass `Exception`; add attributes as needed |
+**Q2: When is the `else` clause useful?**  
+A: Code that should run only on success — kept out of `try` so its own exceptions aren't caught by the handler above.
 
-## Exception hierarchy (simplified)
+**Q3: What does `raise NewError(...) from original` do?**  
+A: Sets `__cause__` on the new exception, preserving the original traceback chain for debugging.
 
-```
-BaseException
-├── SystemExit, KeyboardInterrupt
-└── Exception
-    ├── ValueError, TypeError, KeyError
-    ├── IOError / OSError
-    └── Your custom errors
-```
+**Q4: What is the exception hierarchy?**  
+A: `BaseException` → `Exception` → specific errors (`ValueError`, `TypeError`, etc.). Catch subclasses, not `BaseException`.
 
-## Common interview questions
+**Q5: When should you create custom exception classes?**  
+A: For domain-specific errors (validation, auth, payment) that callers can catch specifically. Add attributes like `field` or `code`.
 
-1. **Difference between `except Exception` and bare `except:`?** — Bare except catches everything including `KeyboardInterrupt`; never use it.
-2. **When is the `else` clause useful?** — Code that should run only on success, not inside try (which would catch its own errors).
-3. **What does `raise X from Y` do?** — Sets `__cause__` for clearer error chains.
+**Q6: finally vs context manager?**  
+A: Both guarantee cleanup. Context managers (`with`) are preferred — cleaner syntax and composable via `ExitStack`.
+
+---
 
 ## Run
 
 ```bash
 python3 example.py
 ```
-
-## Best practices
-
-- Catch specific exceptions, not bare `Exception` unless re-raising
-- Use custom exception classes for domain logic
-- Prefer context managers over manual try/finally for resources

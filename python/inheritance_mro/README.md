@@ -1,56 +1,72 @@
 # Inheritance & MRO
 
+Method Resolution Order determines which parent class method Python calls in multiple inheritance.
+
 ## Files
 
 | File | Description |
 |------|-------------|
-| `example.py` | Multiple inheritance, `super()`, and MRO inspection |
-
-### example.py walkthrough
-
-| Symbol | Type | Description |
-|--------|------|-------------|
-| `D(B, C)` | Diamond inheritance | Classic MRO demo — order is D → B → C → A → object |
-| `D.greet()` | Method | `super()` follows MRO, not just parent class |
-| `Duck` | Multiple inheritance | `Animal`, `Flyer`, `Swimmer` — first `move` in MRO wins |
+| `example.py` | Diamond inheritance, `super()`, `Duck` mixin |
 
 ---
 
-## What is MRO?
+## Descriptive Example
 
-**Method Resolution Order** is the order Python searches base classes for attributes. C3 linearization ensures consistent, predictable lookup.
+### Scenario
+
+Classic diamond: `D` inherits from `B` and `C`, both inherit from `A`. What order does Python search?
 
 ```python
-D.__mro__  # (D, B, C, A, object)
+class A:
+    def greet(self):
+        return "A"
+
+class B(A):
+    def greet(self):
+        return f"B -> {super().greet()}"
+
+class C(A):
+    def greet(self):
+        return f"C -> {super().greet()}"
+
+class D(B, C):
+    def greet(self):
+        return f"D -> {super().greet()}"
+
+print(D.__mro__)
+# (<class 'D'>, <class 'B'>, <class 'C'>, <class 'A'>, <class 'object'>)
+
+print(D().greet())   # D -> B -> C -> A
 ```
 
-## Why interviewers ask
+`super()` follows MRO — it does **not** simply call the direct parent class.
 
-- Diamond problem and how Python solves it
-- Correct use of `super()` in cooperative inheritance
-- Mixins and interface patterns
+---
 
-## Key concepts
+## Interview Q&A
 
-| Concept | Detail |
-|---------|--------|
-| `super()` | Calls next class in MRO, not necessarily direct parent |
-| `__mro__` | Tuple of classes in lookup order |
-| Mixin | Class providing behavior, not meant to stand alone |
-| `isinstance` / `issubclass` | Check type relationships |
+**Q1: What is MRO?**  
+A: Method Resolution Order — the linear order Python searches base classes for attributes/methods. Computed via C3 linearization algorithm.
 
-## Common interview questions
+**Q2: What is the diamond problem?**  
+A: When two parent classes share a grandparent, which `grandparent.method()` gets called? Python's MRO resolves this deterministically.
 
-1. **What is the MRO of `class D(B, C)` where both inherit `A`?** — D, B, C, A, object.
-2. **Does `super()` call the parent class?** — No, it calls the next class in MRO.
-3. **What is the diamond problem?** — Ambiguity when two parents share a grandparent; MRO resolves it.
+**Q3: Does `super()` call the parent class?**  
+A: No. It calls the **next** class in the MRO after the current class. In `D(B,C)`, `super()` in `B` calls `C`, not necessarily `A` directly.
+
+**Q4: How do you inspect MRO?**  
+A: `ClassName.__mro__` or `ClassName.mro()`.
+
+**Q5: What is a mixin?**  
+A: A class providing behavior but not meant to stand alone. Mixed into inheritance for reusable features (e.g., `JsonMixin`, `TimestampMixin`).
+
+**Q6: Multiple inheritance vs composition?**  
+A: Inheritance: "is-a" relationship. Composition: "has-a" — often preferred for flexibility. Favor composition when inheritance hierarchies get deep.
+
+---
 
 ## Run
 
 ```bash
 python3 example.py
 ```
-
-## Related
-
-- [dunder_methods](../dunder_methods/) — operator overloading on inherited classes

@@ -1,6 +1,9 @@
 # Python Interview Topics
 
-Commonly asked Python concepts for software engineer interviews. Each folder contains a runnable `example.py` and a `README.md`.
+Commonly asked Python concepts for software engineer interviews. Each folder includes:
+
+- **`example.py`** — runnable code
+- **`README.md`** — descriptive walkthrough + **Interview Q&A** (5–6 questions with answers)
 
 ## Core language
 
@@ -56,4 +59,4 @@ cd python/<topic>
 python3 example.py
 ```
 
-Read the README in each folder for theory, interview questions, and a walkthrough of `example.py`.
+Read the README in each folder for a **descriptive example walkthrough** and full **Interview Q&A**.

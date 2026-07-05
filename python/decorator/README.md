@@ -1,57 +1,102 @@
 # Decorators
 
+Wrap functions or classes to add behavior (logging, timing, auth, caching) without modifying the original code.
+
 ## Files
 
 | File | Description |
 |------|-------------|
-| `example.py` | Runnable examples — timer, parameterized, and class-based decorators |
-
-### example.py walkthrough
-
-| Symbol | Type | Description |
-|--------|------|-------------|
-| `timer` | Function decorator | Times execution using `functools.wraps` |
-| `repeat(times)` | Parameterized decorator | Calls the wrapped function N times |
-| `CountCalls` | Class decorator | Tracks how many times a function is called |
-| `slow_add`, `greet`, `square` | Demo functions | Show each decorator pattern in action |
+| `example.py` | Timer, parameterized, and class-based decorators |
 
 ---
 
-## What is a decorator?
+## Descriptive Example
 
-A decorator is a callable that takes a function (or class) and returns a modified version of it. Python's `@decorator` syntax is syntactic sugar for:
+### Scenario
+
+You need to time how long `slow_add` takes and count how many times `square` is called — without changing their logic.
 
 ```python
-func = decorator(func)
+import functools
+import time
+
+def timer(func):
+    @functools.wraps(func)          # preserves func.__name__, __doc__
+    def wrapper(*args, **kwargs):
+        start = time.perf_counter()
+        result = func(*args, **kwargs)
+        print(f"{func.__name__} took {time.perf_counter() - start:.4f}s")
+        return result
+    return wrapper
+
+@timer
+def slow_add(a, b):
+    time.sleep(0.1)
+    return a + b
+
+print(slow_add(2, 3))   # slow_add took 0.1001s → 5
 ```
 
-## Why interviewers ask
+`@timer` is sugar for `slow_add = timer(slow_add)`. The wrapper is a **closure** that captures `func`.
 
-- Shows you understand functions as first-class objects
-- Tests knowledge of closures, `*args`/`**kwargs`, and `functools.wraps`
-- Real-world uses: logging, timing, auth, caching, retries
+### Parameterized decorator
 
-## Key concepts
+```python
+def repeat(times):
+    def decorator(func):
+        @functools.wraps(func)
+        def wrapper(*args, **kwargs):
+            for _ in range(times):
+                result = func(*args, **kwargs)
+            return result
+        return wrapper
+    return decorator
 
-| Concept | Detail |
-|---------|--------|
-| `@functools.wraps` | Preserves `__name__`, `__doc__`, and metadata of the wrapped function |
-| Parameterized decorator | Outer function takes decorator args; inner function takes the target |
-| Class decorator | Implement `__call__` or use `__init__` to receive the function |
-| Stacking | `@a @b def f` applies `b` first, then `a`: `f = a(b(f))` |
+@repeat(3)
+def greet(name):
+    print(f"Hello, {name}!")   # prints 3 times
+```
 
-## Common interview questions
+---
 
-1. **Write a decorator that retries a function 3 times on failure.**
-2. **What happens if you forget `@functools.wraps`?** — The wrapper's name/docstring replace the original's.
-3. **Can you decorate a class?** — Yes. `@dataclass`, `@property`-like patterns, or registering classes in a registry.
+## Interview Q&A
+
+**Q1: What is a decorator in Python?**  
+A: A callable that takes a function and returns a modified function. `@decorator` above `def f` means `f = decorator(f)`.
+
+**Q2: Why use `@functools.wraps`?**  
+A: Without it, the wrapper replaces `__name__`, `__doc__`, and other metadata. `wraps` copies them from the original function for debugging and introspection.
+
+**Q3: Write a retry decorator that tries 3 times on failure.**  
+A:
+```python
+def retry(times=3):
+    def decorator(func):
+        @functools.wraps(func)
+        def wrapper(*args, **kwargs):
+            for attempt in range(times):
+                try:
+                    return func(*args, **kwargs)
+                except Exception:
+                    if attempt == times - 1:
+                        raise
+        return wrapper
+    return decorator
+```
+
+**Q4: Can you stack decorators? What order do they apply?**  
+A: Yes. `@a @b def f` applies bottom-up: `f = a(b(f))`. `b` wraps first, then `a` wraps the result.
+
+**Q5: Can you decorate a class?**  
+A: Yes. `@dataclass`, `@total_ordering`, or custom class decorators that modify or register classes.
+
+**Q6: Decorator vs inheritance for extending behavior?**  
+A: Decorators compose behavior at runtime without subclassing. Better for cross-cutting concerns (logging, auth) applied to unrelated functions.
+
+---
 
 ## Run
 
 ```bash
 python3 example.py
 ```
-
-## Further reading
-
-- [PEP 318 — Decorators for Functions and Methods](https://peps.python.org/pep-0318/)

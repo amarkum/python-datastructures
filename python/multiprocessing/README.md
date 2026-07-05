@@ -1,62 +1,70 @@
 # Multiprocessing
 
+Separate processes with independent memory — true CPU parallelism, bypassing the GIL.
+
 ## Files
 
 | File | Description |
 |------|-------------|
-| `example.py` | `ProcessPoolExecutor`, `mp.Process`, and queue-based workers |
-
-### example.py walkthrough
-
-| Symbol | Type | Description |
-|--------|------|-------------|
-| `square(n)` | Function | Simple map target for process pool |
-| `cpu_heavy(n)` | Function | CPU-bound loop demo |
-| `worker(queue, result_list)` | Function | Consumer process reading from a shared queue |
+| `example.py` | `ProcessPoolExecutor`, `mp.Process`, queues |
 
 ---
 
-## What is multiprocessing?
+## Descriptive Example
 
-The `multiprocessing` module spawns **separate processes**, each with its own Python interpreter and memory. Unlike threads, processes bypass the GIL for true CPU parallelism.
+### Scenario
 
-## Why interviewers ask
+Square numbers 0–7 using four worker processes in parallel.
 
-- Contrast with threading and async
-- GIL explanation in practice
-- When to use `ProcessPoolExecutor` vs `ThreadPoolExecutor`
+```python
+from concurrent.futures import ProcessPoolExecutor
 
-## Key concepts
+def square(n):
+    return n * n
 
-| Concept | Detail |
-|---------|--------|
-| `Process` | Independent process with separate memory |
-| `Queue` / `Pipe` | IPC for passing data between processes |
-| `ProcessPoolExecutor` | High-level pool for map/submit patterns |
-| `if __name__ == "__main__"` | Required on Windows/macOS spawn to avoid recursive fork |
+with ProcessPoolExecutor(max_workers=4) as pool:
+    results = list(pool.map(square, range(8)))
 
-## Threading vs multiprocessing
+print(results)   # [0, 1, 4, 9, 16, 25, 36, 49]
+```
 
-| | Threading | Multiprocessing |
-|---|-----------|-----------------|
-| Memory | Shared | Separate |
-| GIL | One bytecode thread at a time | Each process has own GIL |
-| Best for | I/O-bound | CPU-bound |
-| Overhead | Low | Higher (process spawn) |
+Each worker runs in its own process with its own Python interpreter and GIL.
 
-## Common interview questions
+### Required guard on macOS/Windows
 
-1. **Why use multiprocessing over threading for number crunching?** — GIL prevents parallel CPU work in threads.
-2. **Why guard with `if __name__ == "__main__"`?** — Prevents child processes re-importing and re-spawning infinitely.
-3. **How do processes share data?** — Queues, Pipes, Manager, or shared memory — not plain global variables.
+```python
+if __name__ == "__main__":
+    # spawn-based platforms re-import the module
+    # without this guard, child processes spawn infinitely
+    main()
+```
+
+---
+
+## Interview Q&A
+
+**Q1: Multiprocessing vs threading in Python?**  
+A: Multiprocessing: separate processes, bypasses GIL, best for CPU-bound. Threading: shared memory, GIL-limited, best for I/O-bound.
+
+**Q2: Why `if __name__ == "__main__"` guard?**  
+A: On spawn platforms (Windows, macOS), child processes re-import the module. Without the guard, they re-execute process creation code recursively.
+
+**Q3: How do processes share data?**  
+A: `multiprocessing.Queue`, `Pipe`, `Manager` (proxy objects), or `shared_memory`. Not plain global variables.
+
+**Q4: What is `ProcessPoolExecutor`?**  
+A: Pool of worker processes. Submit tasks via `.map()` or `.submit()`. Same API pattern as `ThreadPoolExecutor`.
+
+**Q5: What are pickling errors in multiprocessing?**  
+A: Target functions and arguments must be picklable. Lambdas, local functions, and open file handles often fail. Use top-level functions.
+
+**Q6: Process vs fork on Linux?**  
+A: Linux defaults to `fork` (copy-on-write, faster). macOS/Windows use `spawn` (cleaner but slower startup). Behavior differs — always use the `__main__` guard.
+
+---
 
 ## Run
 
 ```bash
 python3 example.py
 ```
-
-## Related
-
-- [threading](../threading/) — I/O-bound concurrency
-- [async_await](../async_await/) — cooperative I/O

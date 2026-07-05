@@ -1,57 +1,75 @@
 # Async / Await
 
+Cooperative concurrency for I/O-bound work — single thread, event loop, no thread overhead.
+
 ## Files
 
 | File | Description |
 |------|-------------|
-| `example.py` | Coroutines, `gather`, `create_task`, and async generators |
-
-### example.py walkthrough
-
-| Symbol | Type | Description |
-|--------|------|-------------|
-| `fetch_data(name, delay)` | Coroutine | Simulates async I/O with `asyncio.sleep` |
-| `gather_example()` | Coroutine | Runs multiple coroutines concurrently via `gather` |
-| `task_example()` | Coroutine | Schedules work with `asyncio.create_task` |
-| `async_generator()` | Async generator | Yields values with `async for` |
-| `main()` | Coroutine | Entry point orchestrating all demos |
+| `example.py` | Coroutines, `gather`, `create_task`, async generator |
 
 ---
 
-## What is async Python?
+## Descriptive Example
 
-`async def` defines a **coroutine** — a function that can pause with `await` and resume later. `asyncio` runs coroutines on a single thread using an event loop, ideal for I/O-bound work (network, disk).
+### Scenario
 
-## Why interviewers ask
+Fetch data from three "APIs" concurrently — total time ≈ slowest call, not sum of all calls.
 
-- Modern web backends (FastAPI, aiohttp) are async-heavy
-- Tests understanding of concurrency vs parallelism
-- Common confusion: async is not multithreading
+```python
+import asyncio
 
-## Key concepts
+async def fetch(name, delay):
+    print(f"  [{name}] starting")
+    await asyncio.sleep(delay)      # simulates I/O wait
+    print(f"  [{name}] done")
+    return f"result-{name}"
 
-| Concept | Detail |
-|---------|--------|
-| `async def` | Defines a coroutine function |
-| `await` | Pauses until the awaited coroutine/task completes |
-| `asyncio.run()` | Entry point to run the event loop |
-| `asyncio.gather()` | Run multiple coroutines concurrently |
-| `asyncio.create_task()` | Schedule a coroutine as a Task |
-| `async for` / `async with` | Async iteration and context managers |
+async def main():
+    results = await asyncio.gather(
+        fetch("A", 0.2),
+        fetch("B", 0.1),
+        fetch("C", 0.15),
+    )
+    print(results)
 
-## Async vs threading vs multiprocessing
+asyncio.run(main())
+# All three start nearly together; total ~0.2s not 0.45s
+```
 
-| Model | Best for | GIL impact |
-|-------|----------|------------|
-| **asyncio** | Many I/O waits (API calls) | Single thread, cooperative |
-| **threading** | I/O-bound with blocking libs | GIL limits CPU parallelism |
-| **multiprocessing** | CPU-bound work | Separate processes, no shared GIL |
+### Calling async correctly
 
-## Common interview questions
+```python
+coro = fetch("X", 0.1)
+print(coro)             # <coroutine object> — NOT executed yet!
+result = await coro     # inside async function
+# or
+asyncio.run(fetch("X", 0.1))   # from sync code
+```
 
-1. **When should you NOT use async?** — CPU-bound tasks; use multiprocessing instead.
-2. **What happens if you call an async function without `await`?** — You get a coroutine object; it doesn't run.
-3. **Difference between `gather` and `create_task`?** — Tasks start immediately; `gather` waits for all to finish.
+---
+
+## Interview Q&A
+
+**Q1: What is a coroutine?**  
+A: Function defined with `async def`. Calling it returns a coroutine object — it doesn't run until awaited or passed to the event loop.
+
+**Q2: When should you NOT use async?**  
+A: CPU-bound tasks. Async won't parallelize computation. Use multiprocessing or run CPU work in `loop.run_in_executor()`.
+
+**Q3: `asyncio.gather` vs `create_task`?**  
+A: `create_task` schedules immediately and returns a Task. `gather` waits for multiple coroutines/tasks and returns all results (or raises first exception).
+
+**Q4: Async vs threading?**  
+A: Async: single thread, cooperative, no GIL contention, lower overhead. Threading: preemptive, good for blocking libraries that can't be made async.
+
+**Q5: What is the event loop?**  
+A: Schedules and runs coroutines. When a coroutine hits `await`, control returns to the loop to run other ready coroutines.
+
+**Q6: What frameworks use async Python?**  
+A: FastAPI, aiohttp, Starlette, asyncio-based DB drivers. Django 3.1+ has async views; full async ORM support varies.
+
+---
 
 ## Run
 

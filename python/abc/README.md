@@ -1,59 +1,92 @@
 # Abstract Base Classes (abc)
 
+Define interfaces that subclasses must implement — fail at instantiation if methods are missing.
+
 ## Files
 
 | File | Description |
 |------|-------------|
-| `example.py` | `ABC`, `@abstractmethod`, and interface enforcement |
-
-### example.py walkthrough
-
-| Symbol | Type | Description |
-|--------|------|-------------|
-| `Shape` | ABC | Defines abstract `area()` and `perimeter()` |
-| `Rectangle` | Concrete class | Implements all abstract methods |
-| `InvalidShape` | Incomplete class | Cannot be instantiated — missing methods |
-| `Storage` / `MemoryStorage` | Interface pattern | Swap implementations behind common ABC |
+| `example.py` | `Shape` ABC, incomplete subclass trap, storage interface |
 
 ---
 
-## What is abc?
+## Descriptive Example
 
-The `abc` module lets you define **abstract base classes** — classes that cannot be instantiated until all `@abstractmethod`s are implemented.
+### Scenario
 
-## Why interviewers ask
+Define a `Shape` interface — any concrete shape must implement `area()`.
 
-- Interface design and polymorphism
-- Difference from duck typing ("if it walks like a duck...")
-- Used in stdlib: `collections.abc.Iterable`, `Sequence`, etc.
+```python
+from abc import ABC, abstractmethod
 
-## Key concepts
+class Shape(ABC):
+    @abstractmethod
+    def area(self):
+        pass
 
-| Concept | Detail |
-|---------|--------|
-| `ABC` | Base class to inherit from |
-| `@abstractmethod` | Must be overridden in subclass |
-| `register()` | Virtual subclass (duck typing registration) |
-| `collections.abc` | Ready-made ABCs for protocols |
+class Rectangle(Shape):
+    def __init__(self, width, height):
+        self.width = width
+        self.height = height
 
-## ABC vs duck typing
+    def area(self):
+        return self.width * self.height
 
-- **Duck typing**: "Don't check type, check behavior at runtime"
-- **ABC**: Explicit contract; fail at instantiation if incomplete
+class BrokenShape(Shape):
+    pass    # missing area()
 
-## Common interview questions
+rect = Rectangle(4, 5)
+print(rect.area())          # 20
 
-1. **Can you instantiate a class with unimplemented abstract methods?** — No, `TypeError` at instantiation.
-2. **What is `collections.abc.Mapping`?** — ABC for dict-like objects.
-3. **ABC vs Protocol (typing)?** — ABC is runtime checkable; Protocol is static structural typing.
+BrokenShape()               # TypeError: Can't instantiate abstract class
+```
+
+### Swappable implementations
+
+```python
+class Storage(ABC):
+    @abstractmethod
+    def save(self, data): ...
+    @abstractmethod
+    def load(self, key): ...
+
+class MemoryStorage(Storage):
+    def __init__(self):
+        self._data = {}
+    def save(self, data):
+        key = str(len(self._data))
+        self._data[key] = data
+        return key
+    def load(self, key):
+        return self._data[key]
+```
+
+---
+
+## Interview Q&A
+
+**Q1: What is an ABC?**  
+A: Abstract Base Class — cannot be instantiated directly. Subclasses must implement all `@abstractmethod`s or instantiation raises `TypeError`.
+
+**Q2: ABC vs duck typing?**  
+A: Duck typing: "if it quacks, use it" — no formal contract. ABC: explicit interface enforced at instantiation. Both are valid Python styles.
+
+**Q3: What is `collections.abc.Iterable`?**  
+A: ABC for objects with `__iter__`. Lets you check `isinstance(obj, Iterable)` without importing concrete types.
+
+**Q4: ABC vs Protocol (typing)?**  
+A: ABC: runtime check via inheritance. Protocol: static structural typing — checked by mypy/pyright, no inheritance required.
+
+**Q5: Can you instantiate an ABC with all methods implemented?**  
+A: Yes — once all abstract methods are overridden in a concrete subclass, it can be instantiated normally.
+
+**Q6: What is `@abstractclassmethod` / `@abstractstaticmethod`?**  
+A: Variants for abstract class methods and static methods. Same rule — must be implemented in concrete subclass.
+
+---
 
 ## Run
 
 ```bash
 python3 example.py
 ```
-
-## Related
-
-- [inheritance_mro](../inheritance_mro/) — MRO with abstract classes
-- [type_hints](../type_hints/) — `Protocol` for structural subtyping

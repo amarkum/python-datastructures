@@ -1,66 +1,67 @@
 # Comprehensions
 
+Concise syntax to transform and filter iterables into lists, dicts, sets, or generators.
+
 ## Files
 
 | File | Description |
 |------|-------------|
-| `example.py` | List, dict, set, generator comprehensions and nested flatten |
-
-### example.py walkthrough
-
-| Symbol | Type | Description |
-|--------|------|-------------|
-| `squares`, `evens` | List comps | Basic list comprehensions with optional filter |
-| `word_lengths`, `inverted` | Dict comps | Build and invert dictionaries |
-| `unique_lengths` | Set comp | Deduplicated values via set comprehension |
-| `sum_of_squares` | Generator exp | Lazy sum without building a full list |
-| `flat` | Nested comp | Flatten a 2D matrix in one expression |
-| `first_long_word()` | Function | Uses walrus operator `:=` in a generator expression |
+| `example.py` | List, dict, set, generator comps, nested flatten |
 
 ---
 
-## What are comprehensions?
+## Descriptive Example
 
-Concise syntax to build lists, dicts, sets, or generators from iterables — often replacing explicit loops.
+### Scenario
+
+From a list of words, build a length map, filter long words, and sum squares without building a huge list.
 
 ```python
-[x * 2 for x in range(5) if x % 2 == 0]
+words = ["python", "go", "javascript", "rust"]
+
+# dict comprehension
+lengths = {w: len(w) for w in words}
+# {'python': 6, 'go': 2, 'javascript': 10, 'rust': 4}
+
+# list comprehension with filter
+long_words = [w for w in words if len(w) > 4]
+# ['python', 'javascript']
+
+# generator expression — lazy, memory efficient
+total = sum(len(w) ** 2 for w in words)
+
+# flatten 2D matrix
+matrix = [[1, 2, 3], [4, 5, 6]]
+flat = [num for row in matrix for num in row]
+# [1, 2, 3, 4, 5, 6]
 ```
 
-## Why interviewers ask
+---
 
-- Idiomatic Python; shows fluency
-- Readability vs complexity trade-offs
-- Memory: generator expressions vs list comprehensions
+## Interview Q&A
 
-## Syntax reference
+**Q1: List comprehension vs generator expression?**  
+A: List comp `[x for x in items]` builds the full list in memory. Generator `(x for x in items)` yields one at a time — use for large data or as argument to `sum()`, `max()`, etc.
 
-| Type | Syntax |
-|------|--------|
-| List | `[expr for x in iterable if condition]` |
-| Dict | `{k: v for k, v in pairs}` |
-| Set | `{expr for x in iterable}` |
-| Generator | `(expr for x in iterable)` — note parentheses |
+**Q2: When should you NOT use a comprehension?**  
+A: When logic is complex, nested deeply, or has side effects. A regular loop is more readable for multi-step logic.
 
-## Best practices
+**Q3: How do you flatten a 2D list in one line?**  
+A: `[item for row in matrix for item in row]`.
 
-- Keep comprehensions **readable** — if nested or long, use a regular loop
-- Use generator expressions for large data or when passing to `sum()`, `max()`, etc.
-- Avoid side effects inside comprehensions
+**Q4: Dict comprehension syntax?**  
+A: `{key_expr: val_expr for item in iterable if condition}`.
 
-## Common interview questions
+**Q5: Is `[x for x in items]` the same as `list(items)`?**  
+A: Similar for simple iteration, but comprehension allows filtering (`if`) and transformation (`x * 2`).
 
-1. **List comp vs generator expression — when to use which?** — Generator for memory/large data; list when you need indexing or multiple passes.
-2. **Flatten a 2D list in one line.**
-3. **Is `[x for x in items]` the same as `list(items)`?** — Similar, but comp allows filtering/mapping.
+**Q6: Can comprehensions have side effects?**  
+A: Technically yes (`[print(x) for x in items]`), but it's bad practice. Use a regular loop for side effects.
+
+---
 
 ## Run
 
 ```bash
 python3 example.py
 ```
-
-## Related
-
-- `map()`, `filter()`, `zip()` — functional alternatives
-- See [generator](../generator/) for lazy evaluation details

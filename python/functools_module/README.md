@@ -1,53 +1,72 @@
 # functools
 
+Higher-order function utilities — caching, partial application, reduction, and decorator helpers.
+
 ## Files
 
 | File | Description |
 |------|-------------|
-| `example.py` | `lru_cache`, `partial`, `reduce`, and function pipelines |
-
-### example.py walkthrough
-
-| Symbol | Type | Description |
-|--------|------|-------------|
-| `fibonacci(n)` | Cached function | Memoized recursion via `@lru_cache` |
-| `functools.partial` | Utility | Pre-fills arguments to create specialized functions |
-| `functools.reduce` | Utility | Folds iterable to single value |
-| `pipeline(*functions)` | Pattern | Composes multiple functions left-to-right |
+| `example.py` | `lru_cache`, `partial`, `reduce`, pipelines |
 
 ---
 
-## What is functools?
+## Descriptive Example
 
-The `functools` module provides tools for working with callable objects — caching, partial application, reduction, and decorator utilities.
+### Scenario
 
-## Why interviewers ask
+Memoize Fibonacci to turn exponential recursion into linear time.
 
-- `@lru_cache` is a common optimization pattern
-- `partial` for callbacks and configuration
-- `wraps` is essential for decorators (see [decorator](../decorator/))
+```python
+import functools
 
-## Key tools
+@functools.lru_cache(maxsize=None)
+def fibonacci(n):
+    if n < 2:
+        return n
+    return fibonacci(n - 1) + fibonacci(n - 2)
 
-| Tool | Use case |
-|------|----------|
-| `@lru_cache` | Memoize pure functions with bounded cache |
-| `partial(func, *args)` | Bind arguments, create new callable |
-| `reduce(func, iterable)` | Aggregate iterable to one value |
-| `wraps` | Preserve metadata when decorating |
+print(fibonacci(100))           # instant
+print(fibonacci.cache_info())   # hits, misses, size
+```
 
-## Common interview questions
+Without cache: O(2^n). With cache: O(n) — each subproblem computed once.
 
-1. **Implement memoization for Fibonacci.** — `@functools.lru_cache` or manual dict cache.
-2. **When should you NOT use lru_cache?** — Functions with unhashable args, side effects, or mutable return values that callers mutate.
-3. **Difference between `partial` and a lambda?** — `partial` preserves function metadata and introspection.
+### Partial application
+
+```python
+def multiply(a, b, c):
+    return a * b * c
+
+double_first = functools.partial(multiply, 2)
+print(double_first(5, 3))   # 2 * 5 * 3 = 30
+```
+
+---
+
+## Interview Q&A
+
+**Q1: What does `@lru_cache` do?**  
+A: Least Recently Used cache — stores function results keyed by arguments. Repeated calls with same args return cached result instantly.
+
+**Q2: When should you NOT use `lru_cache`?**  
+A: When arguments are unhashable (lists, dicts), function has side effects, or return values are mutated by callers.
+
+**Q3: What is `functools.partial`?**  
+A: Pre-fills some arguments of a function, returning a new callable with remaining args. Useful for callbacks and configuration.
+
+**Q4: What is `functools.wraps`?**  
+A: Copies `__name__`, `__doc__`, etc. from wrapped function to wrapper. Essential for decorators (see [decorator](../decorator/)).
+
+**Q5: What is `functools.reduce`?**  
+A: Applies a binary function cumulatively: `reduce(add, [1,2,3])` → 6. Moved from builtins to functools in Python 3.
+
+**Q6: `lru_cache` vs manual dict cache?**  
+A: `lru_cache` handles eviction (maxsize), thread safety (with lock), and cache statistics. Manual dict is fine for simple cases.
+
+---
 
 ## Run
 
 ```bash
 python3 example.py
 ```
-
-## Related
-
-- [decorator](../decorator/) — uses `functools.wraps`

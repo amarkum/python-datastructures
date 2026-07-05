@@ -1,63 +1,72 @@
-# Threading
+# Threading & GIL
+
+Threads share memory within a process. The GIL limits CPU parallelism but threads help with I/O-bound work.
 
 ## Files
 
 | File | Description |
 |------|-------------|
-| `example.py` | Threads, locks, race conditions, and `ThreadPoolExecutor` |
-
-### example.py walkthrough
-
-| Symbol | Type | Description |
-|--------|------|-------------|
-| `unsafe_increment()` | Function | Increments shared counter without a lock (race condition) |
-| `safe_increment()` | Function | Same logic but protected by `threading.Lock` |
-| `worker(name, delay)` | Function | Simple thread target for demos |
-| `demonstrate_race_condition()` | Function | Shows unreliable counter without synchronization |
-| `demonstrate_lock()` | Function | Shows correct counter with lock |
+| `example.py` | Race condition, locks, `ThreadPoolExecutor` |
 
 ---
 
-## What is threading in Python?
+## Descriptive Example
 
-Threads share the same memory space within a process. Python's `threading` module is suited for **I/O-bound** tasks where threads wait on network, disk, or locks.
+### Scenario
 
-## Why interviewers ask
+Four threads increment a shared counter 100,000 times each — without a lock the result is wrong.
 
-- Race conditions and locks are fundamental concurrency topics
-- The **GIL** (Global Interpreter Lock) is one of the most asked Python questions
-- Distinction between threading and multiprocessing
+```python
+import threading
 
-## The GIL (Global Interpreter Lock)
+counter = 0
+lock = threading.Lock()
 
-Only one thread executes Python bytecode at a time per process. This means threads don't give true CPU parallelism for compute-heavy work — use `multiprocessing` instead.
+def unsafe_increment():
+    global counter
+    for _ in range(100_000):
+        counter += 1          # race condition!
 
-Threads still help when work is I/O-bound: a thread blocked on I/O releases the GIL.
+def safe_increment():
+    global counter
+    for _ in range(100_000):
+        with lock:            # only one thread at a time
+            counter += 1
+```
 
-## Key concepts
+Without lock: result ≈ 400,000 but often less (lost updates).  
+With lock: result = 400,000 exactly.
 
-| Concept | Detail |
-|---------|--------|
-| `threading.Thread` | Spawn a new thread |
-| `threading.Lock` | Mutual exclusion to prevent race conditions |
-| `with lock:` | Acquire lock; auto-release on exit |
-| `ThreadPoolExecutor` | Higher-level thread pool from `concurrent.futures` |
-| Race condition | Unsynchronized access to shared mutable state |
+### The GIL
 
-## Common interview questions
+Only one thread executes Python bytecode at a time per process. CPU-bound threading won't speed up computation — use [multiprocessing](../multiprocessing/) instead.
 
-1. **Why doesn't threading speed up CPU-bound Python code?** — The GIL.
-2. **How do you prevent a race condition?** — Locks, queues, or immutable data.
-3. **Thread vs process?** — Threads share memory; processes are isolated (safer for CPU work).
+---
+
+## Interview Q&A
+
+**Q1: What is the GIL?**  
+A: Global Interpreter Lock — a mutex in CPython allowing only one thread to execute Python bytecode at a time per process.
+
+**Q2: Why doesn't threading speed up CPU-bound Python code?**  
+A: The GIL prevents parallel bytecode execution. Threads take turns, adding overhead without CPU gain.
+
+**Q3: When is threading still useful in Python?**  
+A: I/O-bound work — network requests, file I/O, waiting on external services. Blocked I/O releases the GIL.
+
+**Q4: How do you prevent race conditions?**  
+A: `threading.Lock`, `RLock`, `Semaphore`, `Queue`, or immutable data structures. Prefer `with lock:` for auto-release.
+
+**Q5: Thread vs process?**  
+A: Threads share memory (fast communication, risk of races). Processes have separate memory (isolated, safer for CPU work, higher overhead).
+
+**Q6: What is `ThreadPoolExecutor`?**  
+A: High-level thread pool from `concurrent.futures`. Submit tasks, get `Future` objects. Cleaner than manual `Thread` management.
+
+---
 
 ## Run
 
 ```bash
 python3 example.py
 ```
-
-## When to use what
-
-- **I/O-bound, many connections** → `asyncio` or threading
-- **CPU-bound** → `multiprocessing` or `ProcessPoolExecutor`
-- **Simple parallel I/O** → `ThreadPoolExecutor`

@@ -1,65 +1,74 @@
 # Type Hints
 
+Annotations for static analysis — document intent for humans and tools like mypy/pyright.
+
 ## Files
 
 | File | Description |
 |------|-------------|
-| `example.py` | Annotations, dataclasses, generics, and `Union` |
-
-### example.py walkthrough
-
-| Symbol | Type | Description |
-|--------|------|-------------|
-| `greet(name, times)` | Function | Basic parameter and return type hints |
-| `process_items(items)` | Function | Typed `list[int]` input and `dict` return |
-| `User` | `@dataclass` | Typed fields with `Optional[str]` |
-| `Box[T]` | Generic class | `TypeVar` + `Generic` with `map` method |
-| `parse_id(value)` | Function | `Union[int, str]` with runtime `isinstance` check |
+| `example.py` | Functions, dataclasses, generics |
 
 ---
 
-## What are type hints?
+## Descriptive Example
 
-Annotations on function parameters, return values, and variables. They document intent and enable static analysis with tools like **mypy** and **pyright**. Python does **not** enforce types at runtime by default.
+### Scenario
+
+Type a user model and API functions so mypy catches passing a string where an int is expected.
 
 ```python
-def add(a: int, b: int) -> int:
-    return a + b
+from dataclasses import dataclass
+from typing import Optional, Generic, TypeVar
+
+T = TypeVar("T")
+
+@dataclass
+class User:
+    id: int
+    name: str
+    email: Optional[str] = None
+
+def get_users(min_id: int) -> list[User]:
+    return [User(id=1, name="Alice")]
+
+def parse_id(value: int | str) -> int:
+    if isinstance(value, int):
+        return value
+    return int(value)
+
+class Box(Generic[T]):
+    def __init__(self, value: T):
+        self.value = value
 ```
 
-## Why interviewers ask
+Run static check: `mypy example.py`
 
-- Modern codebases use typing extensively
-- Shows familiarity with `Optional`, `Union`, generics, and protocols
-- Distinction between runtime checks and static analysis
+---
 
-## Key types (typing module)
+## Interview Q&A
 
-| Type | Use case |
-|------|----------|
-| `Optional[T]` | `T | None` — value may be missing |
-| `Union[A, B]` | Value can be A or B (Python 3.10+: `A \| B`) |
-| `list[int]` | Homogeneous list (3.9+ built-in generics) |
-| `Callable[[int, str], bool]` | Function signature |
-| `TypeVar` / `Generic` | Generic classes and functions |
-| `TypedDict` | Dict with fixed key types |
-| `Protocol` | Structural subtyping (duck typing for types) |
+**Q1: Do type hints affect runtime?**  
+A: No. They're stored in `__annotations__` and ignored at runtime unless you use a runtime validator (pydantic, beartype).
 
-## Common interview questions
+**Q2: `Optional[str]` vs `str | None`?**  
+A: Equivalent. `Optional[X]` is shorthand for `Union[X, None]`. Python 3.10+ prefers `X | None`.
 
-1. **Do type hints affect runtime performance?** — No. They're stored in `__annotations__` and ignored unless a type checker or runtime validator uses them.
-2. **`Optional[str]` vs `str | None`?** — Equivalent in modern Python.
-3. **What is `TypeVar` for?** — Preserve type relationships in generic functions/classes.
+**Q3: What is `TypeVar` for?**  
+A: Generic type variables. Preserves relationships: `def first(items: list[T]) -> T` — return type matches element type.
+
+**Q4: What is a Protocol?**  
+A: Structural subtyping — "if it has these methods, it satisfies the protocol." No inheritance required. Static check only.
+
+**Q5: Type hints vs duck typing?**  
+A: Duck typing is runtime behavior. Type hints are optional static checks. Python remains dynamically typed — hints don't enforce at runtime.
+
+**Q6: What is `TypedDict`?**  
+A: Dict with fixed key names and value types. Useful for JSON/API response shapes without full dataclass overhead.
+
+---
 
 ## Run
 
 ```bash
 python3 example.py
-```
-
-## Static checking
-
-```bash
-pip install mypy
-mypy example.py
 ```

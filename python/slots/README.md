@@ -1,56 +1,77 @@
 # __slots__
 
+Restrict instance attributes to a fixed set — saves memory by eliminating per-instance `__dict__`.
+
 ## Files
 
 | File | Description |
 |------|-------------|
-| `example.py` | Slotted vs regular classes, inheritance, and memory |
-
-### example.py walkthrough
-
-| Symbol | Type | Description |
-|--------|------|-------------|
-| `PointWithoutSlots` | Regular class | Uses `__dict__` for dynamic attributes |
-| `PointWithSlots` | Slotted class | Fixed attributes `x`, `y` only |
-| `ChildWithExtraSlot` | Subclass | Must declare own `__slots__` for new attrs |
+| `example.py` | Slotted vs regular class comparison |
 
 ---
 
-## What is __slots__?
+## Descriptive Example
 
-`__slots__` restricts instance attributes to a fixed set, eliminating per-instance `__dict__` and reducing memory usage.
+### Scenario
+
+Create millions of point objects — `__slots__` reduces memory per instance.
 
 ```python
-class Point:
+class PointWithoutSlots:
+    def __init__(self, x, y):
+        self.x = x
+        self.y = y
+
+class PointWithSlots:
     __slots__ = ("x", "y")
+
+    def __init__(self, x, y):
+        self.x = x
+        self.y = y
+
+p = PointWithSlots(1, 2)
+print(hasattr(p, "__dict__"))   # False — no dict overhead
+
+p.label = "origin"              # AttributeError — can't add new attrs
 ```
 
-## Why interviewers ask
+### Subclassing slotted classes
 
-- Memory optimization for millions of objects (ORM rows, game entities)
-- Trade-offs with pickling, multiple inheritance, and weakrefs
-- Contrast with `@dataclass` and dict-based objects
+```python
+class Point3D(PointWithSlots):
+    __slots__ = ("z",)          # must declare new slots
 
-## Trade-offs
+    def __init__(self, x, y, z):
+        super().__init__(x, y)
+        self.z = z
+```
 
-| Pros | Cons |
-|------|------|
-| Lower memory | Cannot add attributes dynamically |
-| Faster attribute access | Multiple inheritance is tricky |
-| Prevents typos (`obj.lable`) | No `__dict__` unless added to slots |
+---
 
-## Common interview questions
+## Interview Q&A
 
-1. **When would you use __slots__?** — Many homogeneous instances where memory matters.
-2. **Can slotted classes use `@property`?** — Yes.
-3. **Does __slots__ work with dataclass?** — Yes: `@dataclass(slots=True)` in Python 3.10+.
+**Q1: What does `__slots__` do?**  
+A: Declares fixed instance attributes. Python stores them in a compact array instead of a `__dict__`, reducing memory and slightly speeding attribute access.
+
+**Q2: When should you use `__slots__`?**  
+A: Many homogeneous instances (ORM rows, game entities, data points) where memory is a concern. Not for general-purpose classes.
+
+**Q3: Can slotted classes use `@property`?**  
+A: Yes. Properties work normally. You can also put property names in `__slots__`.
+
+**Q4: Trade-offs of `__slots__`?**  
+A: Pros: less memory, faster access, prevents typos. Cons: no dynamic attributes, tricky multiple inheritance, weakref needs explicit slot.
+
+**Q5: `__slots__` vs `@dataclass`?**  
+A: Different purposes. Dataclass reduces boilerplate. Slots reduces memory. Combine with `@dataclass(slots=True)` in Python 3.10+.
+
+**Q6: Does `__slots__` affect `__dict__` on the class itself?**  
+A: No — the class object still has `__dict__`. Only instances lose their per-instance `__dict__`.
+
+---
 
 ## Run
 
 ```bash
 python3 example.py
 ```
-
-## Related
-
-- [dataclass](../dataclass/) — alternative for data containers

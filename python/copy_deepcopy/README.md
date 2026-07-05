@@ -1,49 +1,73 @@
 # Copy & Deepcopy
 
+Assignment creates an alias. `copy.copy()` is shallow. `copy.deepcopy()` is fully independent.
+
 ## Files
 
 | File | Description |
 |------|-------------|
-| `example.py` | Shallow copy, deep copy, assignment, and cyclic structures |
-
-### example.py walkthrough
-
-| Symbol | Type | Description |
-|--------|------|-------------|
-| `copy.copy()` | Shallow copy | New outer container; inner objects shared |
-| `copy.deepcopy()` | Deep copy | Recursively copies nested objects |
-| Assignment `alias = a` | Alias | Same object, same id |
-| `a.copy()` | List method | Shallow copy for lists |
+| `example.py` | Shallow vs deep, assignment, cyclic structures |
 
 ---
 
-## Shallow vs deep copy
+## Descriptive Example
 
-| Operation | New outer object? | Nested objects shared? |
-|-----------|-------------------|------------------------|
-| Assignment (`b = a`) | No | Yes (same object) |
-| `copy.copy(a)` | Yes | Yes |
-| `copy.deepcopy(a)` | Yes | No |
+### Scenario
 
-## Why interviewers ask
+Copy a nested list — shallow copy shares inner lists, deep copy does not.
 
-- Bug source when passing mutable defaults or shared nested lists
-- Understanding object identity vs equality
-- When copies matter in data pipelines
+```python
+import copy
 
-## Common interview questions
+original = [[1, 2], [3, 4]]
+shallow = copy.copy(original)
+deep = copy.deepcopy(original)
 
-1. **What happens when you shallow-copy a list of lists and mutate an inner list?** — Both originals and copies see the change.
-2. **When do you need deepcopy?** — Nested mutables, graphs, or when full independence is required.
-3. **Does `list.copy()` deep copy?** — No, it's shallow.
+original[0].append(99)
+
+print(original)   # [[1, 2, 99], [3, 4]]
+print(shallow)    # [[1, 2, 99], [3, 4]]  ← inner list shared!
+print(deep)       # [[1, 2], [3, 4]]      ← unaffected
+```
+
+### Assignment vs copy
+
+```python
+a = [1, 2, 3]
+alias = a           # same object
+copied = a.copy()   # new outer list
+
+a.append(4)
+print(alias)    # [1, 2, 3, 4] — alias sees change
+print(copied)   # [1, 2, 3]    — independent
+```
+
+---
+
+## Interview Q&A
+
+**Q1: What is the difference between shallow and deep copy?**  
+A: Shallow copy creates a new outer container but inner objects are shared. Deep copy recursively copies everything into fully independent objects.
+
+**Q2: When do you need deepcopy?**  
+A: When you need complete independence — nested mutables, graphs, or when downstream code might mutate nested structures.
+
+**Q3: Does `list.copy()` perform a deep copy?**  
+A: No. `list.copy()` and `copy.copy()` are both shallow. Use `copy.deepcopy()` for nested independence.
+
+**Q4: What about copying objects with circular references?**  
+A: `deepcopy` handles cycles by tracking already-copied objects. Manual recursion would infinite-loop without this.
+
+**Q5: Copy vs pickle for cloning objects?**  
+A: Pickle serializes/deserializes — also creates a copy but slower and has security implications with untrusted data.
+
+**Q6: When is shallow copy sufficient?**  
+A: Flat lists, immutable contents, or when you intentionally want shared inner objects (e.g., shared config reference).
+
+---
 
 ## Run
 
 ```bash
 python3 example.py
 ```
-
-## Related
-
-- [identity_equality](../identity_equality/) — `is` vs `==`
-- [mutable_default](../mutable_default/) — shared mutable state bugs

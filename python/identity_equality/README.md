@@ -1,59 +1,72 @@
 # Identity vs Equality
 
+`==` compares values; `is` compares object identity (same memory address).
+
 ## Files
 
 | File | Description |
 |------|-------------|
-| `example.py` | `is` vs `==`, hashability, and custom equality |
-
-### example.py walkthrough
-
-| Symbol | Type | Description |
-|--------|------|-------------|
-| `a`, `b`, `c` | Lists | Same value vs same object |
-| Integer interning | CPython detail | Small ints `-5` to `256` may be cached |
-| `HashablePerson` | Class | Defines both `__eq__` and `__hash__` for set/dict keys |
-| `Person` | Class | `__eq__` only — unhashable by default |
+| `example.py` | `is` vs `==`, hashability, custom equality |
 
 ---
 
-## `==` vs `is`
+## Descriptive Example
 
-| Operator | Compares |
-|----------|----------|
-| `==` | **Values** (calls `__eq__`) |
-| `is` | **Identity** (same object in memory, same `id()`) |
+### Scenario
 
-Use `is` only for singletons: `None`, `True`, `False`.
+Two lists with identical contents are equal but not the same object. `None` checks must always use `is`.
 
-## Hashable types
+```python
+a = [1, 2, 3]
+b = [1, 2, 3]
+c = a
 
-Objects usable as dict keys / set members must be **hashable** (immutable + `__hash__`).
+print(a == b)   # True  — same values
+print(a is b)   # False — different objects in memory
+print(a is c)   # True  — c is an alias for a
 
-| Hashable | Not hashable |
-|----------|--------------|
-| int, str, tuple (of hashables) | list, dict, set |
-| frozenset | mutable custom classes without `__hash__` |
+# Always use `is` for None
+value = None
+if value is None:
+    print("safe None check")
+```
 
-## Why interviewers ask
+### Hashable vs unhashable
 
-- Dict/set key requirements
-- Defining `__eq__` disables default `__hash__` (mutable objects)
-- Bug: comparing with `is` when you mean `==`
+```python
+hash((1, 2, 3))     # OK — tuple of ints is hashable
+hash([1, 2, 3])     # TypeError — lists are mutable, unhashable
 
-## Common interview questions
+# Can't use list as dict key
+{[1, 2]: "value"}   # TypeError
+```
 
-1. **Why can't lists be dict keys?** — Unhashable; mutable.
-2. **If two objects are equal, must they have the same hash?** — Yes, hash contract requires it.
-3. **`a is b` but `a != b`?** — Possible if `__eq__` overridden inconsistently (bad design).
+---
+
+## Interview Q&A
+
+**Q1: When should you use `is` vs `==`?**  
+A: Use `==` for value comparison. Use `is` only for identity checks with singletons: `None`, `True`, `False`. Never use `is` for strings or numbers (except `None`).
+
+**Q2: Why can't lists be dict keys?**  
+A: Dict keys must be hashable (immutable + consistent hash). Lists are mutable — their hash would change if contents change.
+
+**Q3: If two objects are equal, must they have the same hash?**  
+A: Yes — hash contract: `a == b` implies `hash(a) == hash(b)`. Violating this breaks dicts and sets.
+
+**Q4: What happens to `__hash__` when you define `__eq__`?**  
+A: Python sets `__hash__ = None` (unhashable) unless you explicitly define `__hash__`. Mutable objects with custom equality should stay unhashable.
+
+**Q5: Are small integers cached in CPython?**  
+A: Integers `-5` to `256` are interned — `a is b` may be True for equal small ints. Never rely on this; always use `==` for value comparison.
+
+**Q6: What is `id(obj)`?**  
+A: Returns the object's identity (memory address in CPython). `a is b` is equivalent to `id(a) == id(b)`.
+
+---
 
 ## Run
 
 ```bash
 python3 example.py
 ```
-
-## Related
-
-- [copy_deepcopy](../copy_deepcopy/) — copying vs aliasing
-- [dunder_methods](../dunder_methods/) — `__eq__`, `__hash__`

@@ -1,6 +1,8 @@
 # python-datastructures
 
-A hands-on Python repo for **data structures** and **interview topics**. Every folder has runnable code, a README, and short examples below.
+A hands-on Python repo for **data structures** and **interview topics**. Every folder has runnable code, a **descriptive example**, and **Interview Q&A** in its README.
+
+> Each topic's full walkthrough and 5–6 Q&A pairs live in that folder's `README.md`. Below is a quick reference with code snippets; see [Most Asked Interview Questions](#most-asked-interview-questions) for a master Q&A index.
 
 **Requirements:** Python 3.8+ · No external dependencies
 
@@ -647,6 +649,106 @@ gc.collect()
 ```
 
 **Run:** `python3 python/memory_management/example.py`
+
+---
+
+## Most Asked Interview Questions
+
+Master Q&A index — full answers and examples in each folder's README.
+
+### Data structures
+
+**Q: How do you reverse a linked list in O(n) time and O(1) space?**  
+A: Three pointers (`prev`, `current`, `next`). Flip `current.next = prev` each step. → [linkedlist/README.md](./linkedlist/README.md)
+
+**Q: How do you detect a cycle in a linked list?**  
+A: Floyd's algorithm — slow (1 step) and fast (2 steps) pointers meet if cycle exists. → [linkedlist/README.md](./linkedlist/README.md)
+
+**Q: Stack vs queue — key difference?**  
+A: Stack is LIFO; queue is FIFO. → [stack/README.md](./stack/README.md) · [queues/README.md](./queues/README.md)
+
+**Q: BST average vs worst-case search time?**  
+A: Average O(log n); worst O(n) when tree degenerates to a linked list. → [tree/README.md](./tree/README.md)
+
+### Core language
+
+**Q: What is a Python decorator?**  
+A: Callable that wraps a function: `@deco` means `func = deco(func)`. → [python/decorator/](./python/decorator/)
+
+**Q: What do `__enter__` and `__exit__` do?**  
+A: Setup/teardown for `with` blocks. `__exit__` returning True suppresses exceptions. → [python/context_manager/](./python/context_manager/)
+
+**Q: Generator vs list comprehension?**  
+A: Generator is lazy (constant memory). List comp builds full list in memory. → [python/generator/](./python/generator/)
+
+**Q: Iterable vs iterator?**  
+A: Iterable has `__iter__()`. Iterator has `__iter__()` + `__next__()`. → [python/iterator/](./python/iterator/)
+
+**Q: What is a closure?**  
+A: Nested function capturing variables from enclosing scope after outer function returns. → [python/closure/](./python/closure/)
+
+**Q: What are `*args` and `**kwargs`?**  
+A: Extra positional args → tuple; extra keyword args → dict. → [python/args_kwargs/](./python/args_kwargs/)
+
+**Q: Explain LEGB rule.**  
+A: Local → Enclosing → Global → Built-in name lookup order. → [python/scope/](./python/scope/)
+
+**Q: Why is `def f(a=[])` dangerous?**  
+A: Default evaluated once at definition — same mutable list shared across calls. → [python/mutable_default/](./python/mutable_default/)
+
+**Q: `is` vs `==`?**  
+A: `==` compares values; `is` compares identity. Use `is` only for `None`, `True`, `False`. → [python/identity_equality/](./python/identity_equality/)
+
+**Q: Shallow vs deep copy?**  
+A: Shallow copies outer container; nested objects shared. Deep copy is fully independent. → [python/copy_deepcopy/](./python/copy_deepcopy/)
+
+### OOP & classes
+
+**Q: `__repr__` vs `__str__`?**  
+A: `__repr__` is unambiguous (developers); `__str__` is human-readable (users). → [python/dunder_methods/](./python/dunder_methods/)
+
+**Q: What is MRO?**  
+A: Method Resolution Order — C3 linearization for multiple inheritance lookup. → [python/inheritance_mro/](./python/inheritance_mro/)
+
+**Q: What is a metaclass?**  
+A: Class of a class — controls how classes are created (`type` by default). → [python/metaclass/](./python/metaclass/)
+
+**Q: How does `@property` work?**  
+A: Descriptor providing getter/setter/deleter as attribute-like access. → [python/property_descriptor/](./python/property_descriptor/)
+
+**Q: Dataclass vs NamedTuple?**  
+A: Dataclass is mutable (unless frozen). NamedTuple is immutable tuple subclass. → [python/dataclass/](./python/dataclass/)
+
+**Q: When use `__slots__`?**  
+A: Many homogeneous instances where memory matters — removes per-instance `__dict__`. → [python/slots/](./python/slots/)
+
+**Q: ABC vs duck typing?**  
+A: ABC enforces interface at instantiation. Duck typing checks behavior at runtime. → [python/abc/](./python/abc/)
+
+### Concurrency
+
+**Q: What is the GIL?**  
+A: Global Interpreter Lock — one thread runs Python bytecode at a time per process. → [python/threading/](./python/threading/)
+
+**Q: Threading vs multiprocessing vs async?**  
+A: Threading: I/O-bound, shared memory. Multiprocessing: CPU-bound, bypasses GIL. Async: I/O-bound, single-thread cooperative. → [python/threading/](./python/threading/) · [python/multiprocessing/](./python/multiprocessing/) · [python/async_await/](./python/async_await/)
+
+**Q: Why `if __name__ == "__main__"` with multiprocessing?**  
+A: Prevents infinite recursive spawning on Windows/macOS spawn start method. → [python/multiprocessing/](./python/multiprocessing/)
+
+### Standard library
+
+**Q: What does `@lru_cache` do?**  
+A: Memoizes function results by arguments — LRU eviction when maxsize reached. → [python/functools_module/](./python/functools_module/)
+
+**Q: Do type hints enforce types at runtime?**  
+A: No — they're for static tools (mypy). Runtime ignores them by default. → [python/type_hints/](./python/type_hints/)
+
+**Q: Mock vs stub?**  
+A: Mock verifies interactions (call count/args). Stub returns canned data without verification. → [python/unittest_mock/](./python/unittest_mock/)
+
+**Q: How does Python free memory?**  
+A: Reference counting (primary) + cyclic garbage collector for circular refs. → [python/memory_management/](./python/memory_management/)
 
 ---
 

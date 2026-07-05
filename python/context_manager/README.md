@@ -1,59 +1,84 @@
 # Context Managers
 
+Guarantee setup and cleanup using the `with` statement — even when exceptions occur.
+
 ## Files
 
 | File | Description |
 |------|-------------|
 | `example.py` | Class-based and `@contextmanager` examples |
 
-### example.py walkthrough
+---
 
-| Symbol | Type | Description |
-|--------|------|-------------|
-| `FileManager` | Class | Opens/closes a file via `__enter__`/`__exit__` |
-| `temp_value(obj, attr, new_value)` | `@contextmanager` | Temporarily sets an attribute, restores on exit |
-| `Config` | Demo class | Used with `temp_value` to toggle `debug` |
+## Descriptive Example
+
+### Scenario
+
+Temporarily enable debug mode on a config object, then automatically restore the original value.
+
+```python
+from contextlib import contextmanager
+
+class Config:
+    debug = False
+
+@contextmanager
+def temp_value(obj, attr, new_value):
+    old = getattr(obj, attr)
+    setattr(obj, attr, new_value)
+    try:
+        yield obj
+    finally:
+        setattr(obj, attr, old)     # always runs, even on exception
+
+cfg = Config()
+print(cfg.debug)                    # False
+
+with temp_value(cfg, "debug", True):
+    print(cfg.debug)                # True — inside block
+
+print(cfg.debug)                    # False — restored
+```
+
+### Class-based version
+
+```python
+class FileManager:
+    def __enter__(self):
+        self.file = open(self.path, "r")
+        return self.file
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.file.close()
+        return False    # False = don't suppress exceptions
+```
 
 ---
 
-## What is a context manager?
+## Interview Q&A
 
-An object that defines `__enter__` and `__exit__`, used with the `with` statement to guarantee setup and teardown — even when exceptions occur.
+**Q1: What methods define a context manager?**  
+A: `__enter__` (setup, return value for `as` variable) and `__exit__(exc_type, exc_val, exc_tb)` (cleanup).
 
-```python
-with open("file.txt") as f:
-    data = f.read()
-# file is always closed here
-```
+**Q2: What happens if an exception occurs inside `with`?**  
+A: `__exit__` is still called. If `__exit__` returns `True`, the exception is suppressed. If `False` or `None`, it propagates.
 
-## Why interviewers ask
+**Q3: What does `@contextmanager` do?**  
+A: Turns a generator with one `yield` into a context manager. Code before `yield` = enter; `finally` after = exit.
 
-- Resource management (files, locks, DB connections) is daily work
-- Tests understanding of exception propagation via `__exit__`
-- `@contextmanager` from `contextlib` is a common pattern
+**Q4: Why prefer `with open(...)` over manual close?**  
+A: File is always closed, even if an exception occurs between open and close. Prevents resource leaks.
 
-## Key concepts
+**Q5: What is `contextlib.ExitStack`?**  
+A: Manages a dynamic number of context managers — useful when you don't know how many resources to open at compile time.
 
-| Method | Role |
-|--------|------|
-| `__enter__` | Runs at start of `with` block; return value bound to `as` variable |
-| `__exit__(exc_type, exc_val, exc_tb)` | Runs on exit; return `True` to suppress exception |
-| `@contextmanager` | Write a generator with `yield`; code before = enter, `finally` = exit |
+**Q6: Real-world examples of context managers?**  
+A: File I/O (`open`), locks (`threading.Lock`), DB transactions, `unittest.mock.patch`, temporary directory (`tempfile`).
 
-## Common interview questions
-
-1. **Implement a context manager that suppresses a specific exception type.**
-2. **Difference between `__exit__` returning True vs False?** — True suppresses the exception.
-3. **When would you use `contextlib.ExitStack`?** — Managing a dynamic number of context managers.
+---
 
 ## Run
 
 ```bash
 python3 example.py
 ```
-
-## Built-in examples
-
-- `open()` — file handles
-- `threading.Lock()` — acquire/release
-- `unittest.mock.patch` — temporary attribute replacement

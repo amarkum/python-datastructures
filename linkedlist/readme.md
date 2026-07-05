@@ -1,68 +1,74 @@
 # Linked List
 
-A singly linked list implementation with common interview operations.
+A singly linked list — each node stores data and a pointer to the next node. Common in interviews for reversal, cycle detection, and two-pointer problems.
 
 ## Files
 
 | File | Description |
 |------|-------------|
-| `linkedlistcustom.py` | Core implementation — `Node` and `LinkedList` classes |
-| `caller.py` | Demo script and intersection utilities |
+| `linkedlistcustom.py` | `Node` and `LinkedList` implementation |
+| `caller.py` | Demo + intersection utilities |
 
 ---
 
-## linkedlistcustom.py
+## Descriptive Example
 
-### Classes
+### Scenario
 
-**`Node`** — Single node with `data` and `next` pointer.
+Build a list `2 → 4 → 6 → 7`, delete `4`, reverse it, and find the middle element.
 
-**`LinkedList`** — Singly linked list with the following methods:
-
-| Method | Description | Time |
-|--------|-------------|------|
-| `add_at_head(data)` | Insert at the beginning | O(1) |
-| `add_at_end(data)` | Insert at the tail | O(n) |
-| `delete_at_head()` | Remove the first node | O(1) |
-| `delete_by_value(value)` | Remove first node matching value | O(n) |
-| `print_all()` | Print all elements | O(n) |
-| `reverse()` | Reverse list in place | O(n) |
-| `find_mid()` | Find middle element (slow/fast pointers) | O(n) |
-| `print_mid_to_end()` | Print from middle to end | O(n) |
-| `detect_loop()` | Floyd's cycle detection | O(n) |
-| `is_empty()` | Check if list is empty | O(1) |
-
-### Usage
+### Step-by-step
 
 ```python
 from linkedlistcustom import LinkedList
 
 ll = LinkedList()
-ll.add_at_end(1)
-ll.add_at_end(2)
-ll.reverse()
-ll.print_all()
+for value in [2, 4, 6, 7]:
+    ll.add_at_end(value)
+
+ll.delete_by_value(4)   # 2 → 6 → 7
+ll.reverse()            # 7 → 6 → 2
+print(ll.find_mid())    # 6 (slow/fast pointers)
 ```
 
----
+### Floyd's cycle detection
 
-## caller.py
+If the last node points back to an earlier node, `detect_loop()` returns `True` using slow/fast pointers — O(n) time, O(1) space.
 
-Demonstrates `LinkedList` operations and provides intersection helpers.
+### Intersection of two lists
 
-### Classes
-
-**`Caller`**
-
-| Method | Description |
-|--------|-------------|
-| `create_intersection(node_one, node_two)` | Creates an intersection between two lists |
-| `find_intersection(head_one, head_two)` | Finds intersection node using two-pointer technique |
-
-### Run
+`Caller.find_intersection(head_a, head_b)` — when two lists merge, both pointers switch heads after reaching the end. They meet at the intersection or both become `None`.
 
 ```bash
 python3 caller.py
 ```
 
-Runs delete, reverse, loop detection, and intersection demos.
+---
+
+## Interview Q&A
+
+**Q1: What is the time complexity of inserting at the head vs tail of a singly linked list?**  
+A: Head insert is O(1). Tail insert is O(n) because you must traverse to the last node (unless you keep a tail pointer).
+
+**Q2: How do you reverse a linked list in place?**  
+A: Iterate with three pointers — `prev`, `current`, `next`. Set `current.next = prev`, then advance all three. Update `head` to the last `prev`.
+
+**Q3: How does Floyd's cycle detection work?**  
+A: Slow moves 1 step, fast moves 2 steps per iteration. If there's a cycle, fast eventually equals slow. If fast reaches `None`, no cycle.
+
+**Q4: How do you find the middle of a linked list in one pass?**  
+A: Slow pointer moves 1 step, fast moves 2 steps. When fast reaches the end, slow is at the middle.
+
+**Q5: Linked list vs array — when prefer which?**  
+A: Linked list: frequent inserts/deletes at known positions, unknown size. Array: random access, cache locality, less memory overhead per element.
+
+**Q6: How do you find the intersection node of two linked lists?**  
+A: Two pointers start at each head. When one reaches the end, redirect to the other list's head. They meet at intersection or both become `None` after equal total steps.
+
+---
+
+## Run
+
+```bash
+python3 caller.py
+```

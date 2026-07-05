@@ -1,55 +1,73 @@
 # unittest.mock
 
+Replace real dependencies with fakes during tests — verify interactions without hitting DB/API.
+
 ## Files
 
 | File | Description |
 |------|-------------|
-| `example.py` | `MagicMock`, `patch`, `side_effect`, and call assertions |
-
-### example.py walkthrough
-
-| Symbol | Type | Description |
-|--------|------|-------------|
-| `fetch_user(user_id, db)` | Function | Dependency injected — easy to mock `db` |
-| `MagicMock` | Mock class | Auto-creates attributes and records calls |
-| `patch` | Context decorator | Temporarily replaces object in namespace |
-| `side_effect` | Mock config | Return sequence or raise exceptions |
+| `example.py` | `MagicMock`, `patch`, `side_effect`, assertions |
 
 ---
 
-## What is mocking?
+## Descriptive Example
 
-Testing in isolation by replacing dependencies (DB, API, filesystem) with fake objects that record interactions.
+### Scenario
 
-## Why interviewers ask
+Test `fetch_user` without a real database by injecting a mock.
 
-- Unit testing best practices
-- Dependency injection vs patching
-- How to test code with external I/O
+```python
+from unittest.mock import MagicMock
 
-## Key tools
+def fetch_user(user_id, db):
+    return db.get(user_id)
 
-| Tool | Use case |
-|------|----------|
-| `MagicMock()` | General-purpose mock with call tracking |
-| `@patch("module.ClassName")` | Replace object during test |
-| `.return_value` | Fixed return from mock |
-| `.side_effect` | Callable, exception, or iterable of returns |
-| `.assert_called_with()` | Verify mock was called correctly |
+mock_db = MagicMock()
+mock_db.get.return_value = {"id": 1, "name": "Alice"}
 
-## Common interview questions
+user = fetch_user(1, mock_db)
+print(user)                              # {'id': 1, 'name': 'Alice'}
+mock_db.get.assert_called_once_with(1)   # verify interaction
+```
 
-1. **Mock vs stub vs fake?** — Mock verifies interactions; stub returns canned data; fake has working implementation.
-2. **Where to patch?** — Patch where the name is **looked up**, not where it's defined.
-3. **How to mock `requests.get`?** — `@patch("mymodule.requests.get")` if imported in mymodule.
+### Patching where name is used
+
+```python
+from unittest.mock import patch
+
+with patch("builtins.print") as mock_print:
+    print("hello")
+    mock_print.assert_called_once_with("hello")
+```
+
+Patch the namespace where the name is **looked up**, not where it's defined.
+
+---
+
+## Interview Q&A
+
+**Q1: Mock vs stub vs fake?**  
+A: **Mock**: verifies interactions (was it called? with what args?). **Stub**: returns canned data, no verification. **Fake**: working lightweight implementation (in-memory DB).
+
+**Q2: What is `MagicMock`?**  
+A: Auto-creates attributes and methods on access. Records all calls. Returns another MagicMock for chained access.
+
+**Q3: Where should you patch?**  
+A: Where the name is looked up (import site), not where defined. If `mymodule` does `from requests import get`, patch `mymodule.get`.
+
+**Q4: What is `side_effect`?**  
+A: Instead of fixed `return_value`, can be: an exception to raise, an iterable of return values, or a callable for dynamic behavior.
+
+**Q5: `@patch` as decorator vs context manager?**  
+A: Both work. Decorator injects mock as extra argument. Context manager scopes the patch to a block.
+
+**Q6: How to mock async functions?**  
+A: `AsyncMock` from `unittest.mock` (Python 3.8+). `mock_coro = AsyncMock(return_value=result)`.
+
+---
 
 ## Run
 
 ```bash
 python3 example.py
 ```
-
-## Related
-
-- [context_manager](../context_manager/) — `patch` can be used as context manager
-- [decorator](../decorator/) — `@patch` is a decorator

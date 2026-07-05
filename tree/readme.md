@@ -1,58 +1,68 @@
 # Binary Search Tree
 
-A binary search tree (BST) implementation with insert, search, delete, and height operations.
+Ordered binary tree — left subtree values are smaller, right subtree values are larger. Supports O(log n) search, insert, and delete on average.
 
 ## Files
 
 | File | Description |
 |------|-------------|
-| `binarysearchtreecustom.py` | Core `Node` and `BinarySearchTree` classes |
-| `caller.py` | Demo script |
+| `binarysearchtreecustom.py` | `Node` and `BinarySearchTree` |
+| `caller.py` | Build, search, delete, height demo |
 
 ---
 
-## binarysearchtreecustom.py
+## Descriptive Example
 
-### Classes
+### Scenario
 
-**`Node`** — Tree node with `data`, `left`, and `right` pointers.
-
-**`BinarySearchTree`**
-
-| Method | Description | Average time |
-|--------|-------------|--------------|
-| `add(value)` | Insert a value | O(log n) |
-| `search(value)` | Find a value | O(log n) |
-| `delete(value)` | Remove a node | O(log n) |
-| `find_height(node)` | Compute tree height | O(n) |
-| `print_tree(node)` | Print tree sideways (root on left) | O(n) |
-| `is_empty()` | Check if tree is empty | O(1) |
-
-Deletion handles three cases: no children, one child, and two children (inorder successor).
-
-### Usage
+Insert values, search for one present and one absent, delete a node with two children, print the tree.
 
 ```python
 from binarysearchtreecustom import BinarySearchTree
 
 bst = BinarySearchTree()
-bst.add(5)
-bst.add(3)
-print(bst.search(3))  # True
+for v in [6, 4, 9, 5, 2, 8, 12]:
+    bst.add(v)
+
+print(bst.search(12))   # True
+print(bst.search(108))  # False
+
+bst.delete(9)           # node with two children → replaced by inorder successor
 bst.print_tree(bst.root)
+print(bst.find_height(bst.root))
 ```
+
+### Delete cases
+
+1. **No children** — remove node, set parent pointer to `None`
+2. **One child** — replace node with its child
+3. **Two children** — copy inorder successor (min of right subtree) into node, delete successor
 
 ---
 
-## caller.py
+## Interview Q&A
 
-### Class: `BinarySearchTreeCaller`
+**Q1: What is the time complexity of BST operations?**  
+A: Average O(log n) for balanced trees. Worst O(n) if tree degenerates to a linked list (sorted insert order).
 
-| Method | Description |
-|--------|-------------|
-| `main()` | Builds a BST, searches, prints, deletes a node, prints height |
+**Q2: How is a BST different from a binary heap?**  
+A: BST maintains sorted order (left < node < right). Heap maintains heap property for min/max extraction, not full sorting.
 
-### Run
+**Q3: What is an inorder traversal of a BST?**  
+A: Left → Node → Right. Produces values in sorted ascending order.
+
+**Q4: How do you delete a node with two children?**  
+A: Find inorder successor (smallest in right subtree) or predecessor (largest in left), copy its value, delete that node.
+
+**Q5: How do you balance a BST?**  
+A: Use self-balancing variants: AVL tree (strict balance), Red-Black tree (relaxed balance), or rebuild from sorted array.
+
+**Q6: BST vs hash table for lookup?**  
+A: Hash table: O(1) average, no ordering. BST: O(log n), supports range queries, ordered traversal, predecessor/successor.
+
+---
+
+## Run
 
 ```bash
 python3 caller.py

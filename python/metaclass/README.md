@@ -1,67 +1,73 @@
 # Metaclasses
 
+Metaclasses are classes that create classes — they control what happens when Python sees `class Foo:`.
+
 ## Files
 
 | File | Description |
 |------|-------------|
-| `example.py` | Singleton metaclass, validation metaclass, and `type()` demo |
-
-### example.py walkthrough
-
-| Symbol | Type | Description |
-|--------|------|-------------|
-| `SingletonMeta` | Metaclass | Ensures only one instance per class |
-| `Database` | Class | Uses `SingletonMeta` — second call returns same instance |
-| `ValidatedMeta` | Metaclass | Raises `TypeError` if required attrs are missing |
-| `Plugin` | Class | Validated by `ValidatedMeta` |
-| `Dynamic` | Class via `type()` | Created at runtime without `class` statement |
+| `example.py` | Singleton metaclass, validation, `type()` demo |
 
 ---
 
-## What is a metaclass?
+## Descriptive Example
 
-A metaclass is the **class of a class**. Just as `instance.__class__` is `MyClass`, `MyClass.__class__` is usually `type`. Metaclasses control **how classes are created**.
+### Scenario
+
+Ensure a Database class has only one instance across the entire application.
 
 ```python
-class MyClass(metaclass=MyMeta):
-    pass
-# MyMeta.__new__ / __init__ run when MyClass is defined
+class SingletonMeta(type):
+    _instances = {}
+
+    def __call__(cls, *args, **kwargs):
+        if cls not in cls._instances:
+            cls._instances[cls] = super().__call__(*args, **kwargs)
+        return cls._instances[cls]
+
+class Database(metaclass=SingletonMeta):
+    def __init__(self, url):
+        self.url = url
+
+db1 = Database("postgres://localhost")
+db2 = Database("mysql://other")
+print(db1 is db2)   # True — same instance
+print(db1.url)      # postgres://localhost (first call wins)
 ```
 
-## Why interviewers ask
+### Creating a class at runtime
 
-- Advanced OOP; shows deep Python knowledge
-- Used in frameworks: Django ORM, dataclasses internals, ABC registration
-- Often asked as "what happens when Python sees `class Foo`?"
+```python
+Dynamic = type("Dynamic", (), {"x": 42, "greet": lambda self: "hi"})
+print(Dynamic().x)   # 42
+```
 
-## Class creation flow (simplified)
+---
 
-1. Python collects the class body into a namespace dict
-2. Metaclass `__new__` creates the class object
-3. Metaclass `__init__` initializes it
-4. Class object is bound to the name `Foo`
+## Interview Q&A
 
-## Key concepts
+**Q1: What is a metaclass?**  
+A: The class of a class. `MyClass.__class__` is usually `type`. Metaclasses customize class creation via `__new__` and `__init__`.
 
-| Concept | Detail |
-|---------|--------|
-| `type(name, bases, dict)` | Built-in way to create a class at runtime |
-| `__new__` on metaclass | Called before the class object exists |
-| `__init__` on metaclass | Called after class object is created |
-| Default metaclass | `type` |
+**Q2: What happens when Python executes `class Foo:`?**  
+A: Body collected into namespace → metaclass `__new__` creates class object → metaclass `__init__` initializes it → name `Foo` bound to class.
 
-## Common interview questions
+**Q3: When use metaclass vs class decorator?**  
+A: Metaclass: control creation of entire inheritance hierarchies. Class decorator: transform a single class. Decorator is simpler for most cases.
 
-1. **When would you use a metaclass vs a class decorator?** — Metaclass for inheritance hierarchies; decorator for single-class transformation.
-2. **Implement a Singleton using a metaclass.**
-3. **What is the metaclass of `type`?** — `type` (itself).
+**Q4: What is the metaclass of `type`?**  
+A: `type` itself — it's its own metaclass.
+
+**Q5: Implement Singleton without metaclass?**  
+A: Override `__new__` on the class itself, or use a module-level instance, or `@functools.lru_cache` on factory function.
+
+**Q6: Real-world metaclass usage?**  
+A: Django ORM models, dataclass generation, API registration, enforcing interfaces on subclasses. Prefer `__init_subclass__` or decorators when possible.
+
+---
 
 ## Run
 
 ```bash
 python3 example.py
 ```
-
-## Note
-
-Prefer simpler alternatives when possible: `@dataclass`, `__init_subclass__`, or class decorators often suffice.

@@ -1,56 +1,79 @@
 # Memory Management
 
+CPython uses reference counting plus a cyclic garbage collector for circular references.
+
 ## Files
 
 | File | Description |
 |------|-------------|
-| `example.py` | Reference counting, cyclic GC, and weak references |
-
-### example.py walkthrough
-
-| Symbol | Type | Description |
-|--------|------|-------------|
-| `sys.getrefcount()` | Builtin | Shows reference count (CPython) |
-| `Node.__del__` | Destructor | Called when refcount hits zero (not guaranteed timing) |
-| `gc.collect()` | GC | Breaks cyclic reference graphs |
-| `weakref.ref()` | Weak reference | Reference that doesn't prevent collection |
+| `example.py` | Refcount, cyclic GC, weakref |
 
 ---
 
-## How Python manages memory (CPython)
+## Descriptive Example
 
-1. **Reference counting** — primary mechanism; object freed when count hits 0
-2. **Cycle detector (`gc` module)** — collects circular references refcount alone can't free
-3. **No manual free** — unlike C/C++; developer doesn't call `free()`
+### Scenario
 
-## Why interviewers ask
+Understand when objects are freed and how weak references observe without preventing collection.
 
-- Explains memory leaks in long-running apps
-- Weakref caches, event listeners, and observer patterns
-- Contrast with Java GC or Rust ownership
+```python
+import sys, weakref, gc
 
-## Key concepts
+obj = ["hello", "world"]
+print(sys.getrefcount(obj) - 1)   # adjust for getrefcount's own reference
 
-| Concept | Detail |
-|---------|--------|
-| Reference count | Increases on assignment; decreases on del / scope exit |
-| Cyclic refs | Two objects reference each other — need `gc.collect()` |
-| `weakref` | Observe object without keeping it alive |
-| `__del__` | Unreliable for cleanup — prefer context managers |
+ref = obj                         # refcount +1
+alias = obj                       # refcount +1
 
-## Common interview questions
+del ref, alias, obj               # refcount → 0 → object freed
 
-1. **How does Python free memory?** — Reference counting + cyclic GC.
-2. **Can reference cycles leak memory?** — Eventually collected by gc, but may delay until collection run.
-3. **When use weakref?** — Caches, canonical mappings where you don't own the object.
+# Weak reference — doesn't prevent collection
+data = ["important"]
+weak = weakref.ref(data)
+print(weak() is not None)   # True
+del data
+print(weak() is None)       # True — object collected
+```
+
+### Cyclic references
+
+```python
+a = []
+b = []
+a.append(b)
+b.append(a)
+del a, b
+gc.collect()    # cycle detector frees both
+```
+
+Reference counting alone can't free cycles — the cyclic GC handles them.
+
+---
+
+## Interview Q&A
+
+**Q1: How does Python manage memory?**  
+A: Primary: reference counting (increment on assign, decrement on del/scope exit; free at zero). Secondary: cyclic GC for circular references.
+
+**Q2: Can Python have memory leaks?**  
+A: Yes — global references, closures capturing large objects, C extensions, or cycles with `__del__` methods that prevent GC collection.
+
+**Q3: What is `weakref`?**  
+A: Reference that doesn't increment refcount. Useful for caches and observers — object can be collected when no strong refs remain.
+
+**Q4: Is `__del__` reliable for cleanup?**  
+A: No. Call order is undefined, may not run at interpreter shutdown, and can resurrect objects. Prefer context managers and `try/finally`.
+
+**Q5: What is `gc.collect()`?**  
+A: Forces a full garbage collection cycle. Useful after deleting large cyclic structures. Usually not needed in normal code.
+
+**Q6: Python vs Java GC?**  
+A: Python: refcount (deterministic, immediate) + cycle detector. Java: tracing GC (generational). Python has no manual `free()` — developer doesn't manage memory directly.
+
+---
 
 ## Run
 
 ```bash
 python3 example.py
 ```
-
-## Related
-
-- [context_manager](../context_manager/) — preferred resource cleanup
-- [slots](../slots/) — reduce memory per instance
