@@ -1,44 +1,68 @@
-# Linked List Quick Reference Guide
+# Linked List
 
-## Overview
+A singly linked list implementation with common interview operations.
 
-A linked list is a linear data structure where each element is a separate object, called a node. Each node contains the data and a reference to the next node in the list.
+## Files
 
-## Types of Linked Lists
+| File | Description |
+|------|-------------|
+| `linkedlistcustom.py` | Core implementation — `Node` and `LinkedList` classes |
+| `caller.py` | Demo script and intersection utilities |
 
-- **Singly Linked List**: Each node has a single reference to the next node.
-- **Doubly Linked List**: Each node has two references, one to the next node and another to the previous node.
-- **Circular Linked List**: The last node points back to the first node, making a circle.
+---
 
-## Key Operations
+## linkedlistcustom.py
 
-1. **Addition**
-   - `add_at_head(data)`: Add a node with `data` at the beginning.
-   - `add_at_end(data)`: Add a node with `data` at the end.
+### Classes
 
-2. **Deletion**
-   - `delete_at_head()`: Remove the first node.
-   - `delete_by_value(value)`: Remove a node with the specified `value`.
+**`Node`** — Single node with `data` and `next` pointer.
 
-3. **Traversal**
-   - `print_all()`: Print all elements of the list.
+**`LinkedList`** — Singly linked list with the following methods:
 
-4. **Reversal**
-   - `reverse()`: Reverse the linked list in place.
+| Method | Description | Time |
+|--------|-------------|------|
+| `add_at_head(data)` | Insert at the beginning | O(1) |
+| `add_at_end(data)` | Insert at the tail | O(n) |
+| `delete_at_head()` | Remove the first node | O(1) |
+| `delete_by_value(value)` | Remove first node matching value | O(n) |
+| `print_all()` | Print all elements | O(n) |
+| `reverse()` | Reverse list in place | O(n) |
+| `find_mid()` | Find middle element (slow/fast pointers) | O(n) |
+| `print_mid_to_end()` | Print from middle to end | O(n) |
+| `detect_loop()` | Floyd's cycle detection | O(n) |
+| `is_empty()` | Check if list is empty | O(1) |
 
-5. **Searching**
-   - `find_mid()`: Find the middle element of the list.
-
-6. **Loop Detection**
-   - `detect_loop()`: Detect if there's a loop in the list.
-
-## Example Implementation in Python
+### Usage
 
 ```python
-class Node:
-    def __init__(self, data):
-        self.data = data
-        self.next = None
+from linkedlistcustom import LinkedList
 
-class LinkedList:
-    # Constructor and other methods...
+ll = LinkedList()
+ll.add_at_end(1)
+ll.add_at_end(2)
+ll.reverse()
+ll.print_all()
+```
+
+---
+
+## caller.py
+
+Demonstrates `LinkedList` operations and provides intersection helpers.
+
+### Classes
+
+**`Caller`**
+
+| Method | Description |
+|--------|-------------|
+| `create_intersection(node_one, node_two)` | Creates an intersection between two lists |
+| `find_intersection(head_one, head_two)` | Finds intersection node using two-pointer technique |
+
+### Run
+
+```bash
+python3 caller.py
+```
+
+Runs delete, reverse, loop detection, and intersection demos.

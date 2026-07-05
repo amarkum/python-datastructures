@@ -1,35 +1,56 @@
-# Python Queue Implementation
+# Queue
 
-## Overview
+A circular queue implementation following the **First In, First Out (FIFO)** principle.
 
-This project implements a basic queue data structure in Python. A queue is a linear data structure that follows the First In First Out (FIFO) principle, where the first element added to the queue will be the first one to be removed.
+## Files
 
-## Features
+| File | Description |
+|------|-------------|
+| `queuecustom.py` | Core `Queue` class |
+| `caller.py` | Demo script |
 
-- **Enqueue**: Add elements to the back of the queue.
-- **Dequeue**: Remove elements from the front of the queue.
-- **Check Full**: Determine if the queue is full.
-- **Check Empty**: Determine if the queue is empty.
-- **Get Current Size**: Get the number of elements in the queue.
+---
 
-## Installation
+## queuecustom.py
 
-No additional installation is required. Ensure you have Python installed on your system.
+### Class: `Queue`
 
-## Usage
+Fixed-capacity circular queue using a ring buffer.
 
-Here's a simple example of how to use the `Queue` class:
+| Method | Description | Time |
+|--------|-------------|------|
+| `enqueue(value)` | Add element to the back | O(1) |
+| `dequeue()` | Remove and return front element | O(1) |
+| `get_current_size()` | Return number of elements | O(1) |
+| `is_empty()` | Check if queue is empty | O(1) |
+| `is_full()` | Check if queue is at capacity | O(1) |
+
+The circular index wraps using modulo arithmetic: `back = (back + 1) % max_size`.
+
+### Usage
 
 ```python
-from queue_custom import Queue
+from queuecustom import Queue
 
-# Create a new instance of Queue with a specific capacity
 queue = Queue(5)
+queue.enqueue(1)
+print(queue.dequeue())  # 1
+```
 
-# Enqueue elements
-for i in range(5):
-    queue.enqueue(i)
+---
 
-# Dequeue and display elements
-while not queue.is_empty():
-    print(queue.dequeue())
+## caller.py
+
+### Class: `QueueCaller`
+
+| Method | Description |
+|--------|-------------|
+| `main()` | Enqueues until full, dequeues, re-enqueues, drains queue |
+
+### Run
+
+```bash
+python3 caller.py
+```
+
+Demonstrates circular queue wrap-around after dequeue.

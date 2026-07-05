@@ -1,36 +1,54 @@
+# Stack
 
-# Python Stack Implementation
+An array-based stack implementation following the **Last In, First Out (LIFO)** principle.
 
-## Overview
+## Files
 
-This project provides a Python implementation of a Stack, a fundamental data structure that follows the Last In First Out (LIFO) principle. The last element added to the stack will be the first one to be removed.
+| File | Description |
+|------|-------------|
+| `stackcustom.py` | Core `Stack` class |
+| `caller.py` | Demo script |
 
-## Features
+---
 
-- **Push**: Add elements to the top of the stack.
-- **Pop**: Remove elements from the top of the stack.
-- **Check Full**: Determine if the stack is full.
-- **Check Empty**: Determine if the stack is empty.
-- **Get Top Element**: View the top element of the stack.
+## stackcustom.py
 
-## Installation
+### Class: `Stack`
 
-No additional installation is required. Ensure you have Python installed on your system.
+Fixed-capacity stack backed by a Python list.
 
-## Usage
+| Method | Description | Time |
+|--------|-------------|------|
+| `push(value)` | Add element to top | O(1) |
+| `pop()` | Remove and return top element | O(1) |
+| `get_top()` | Peek at top without removing | O(1) |
+| `is_empty()` | Check if stack is empty | O(1) |
+| `is_full()` | Check if stack is at capacity | O(1) |
 
-Here's a quick example of how to use the `Stack` class:
+### Usage
 
 ```python
-from stack_custom import Stack
+from stackcustom import Stack
 
-# Create a new instance of Stack with a specific capacity
 stack = Stack(5)
+stack.push(10)
+print(stack.pop())  # 10
+```
 
-# Push elements onto the stack
-for i in range(5):
-    stack.push(i)
+---
 
-# Pop and display elements
-while not stack.is_empty():
-    print(stack.pop())
+## caller.py
+
+### Class: `StackCaller`
+
+| Method | Description |
+|--------|-------------|
+| `main()` | Pushes until full, pops all, tests edge cases |
+
+### Run
+
+```bash
+python3 caller.py
+```
+
+Demonstrates push/pop, full-stack and empty-stack handling.

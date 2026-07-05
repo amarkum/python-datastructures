@@ -1,41 +1,59 @@
-# Python Binary Search Tree Implementation
+# Binary Search Tree
 
-## Overview
+A binary search tree (BST) implementation with insert, search, delete, and height operations.
 
-This project provides a Python implementation of a Binary Search Tree (BST), a fundamental data structure used in computer science. The BST allows for fast lookup, addition, and deletion of items and maintains its elements in a sorted order.
+## Files
 
-## Features
+| File | Description |
+|------|-------------|
+| `binarysearchtreecustom.py` | Core `Node` and `BinarySearchTree` classes |
+| `caller.py` | Demo script |
 
-- **Add Elements**: Efficiently add elements to the tree while maintaining order.
-- **Search Elements**: Quickly search for elements in the tree.
-- **Print Tree**: Print the tree structure in a readable format.
-- **Find Height**: Determine the height of the tree.
-- **Delete Elements**: Remove elements from the tree.
+---
 
-## Installation
+## binarysearchtreecustom.py
 
-No additional installation is required. Ensure you have Python installed on your system.
+### Classes
 
-## Usage
+**`Node`** — Tree node with `data`, `left`, and `right` pointers.
 
-To use the `BinarySearchTree` class, import it into your Python script. Here's a quick example:
+**`BinarySearchTree`**
+
+| Method | Description | Average time |
+|--------|-------------|--------------|
+| `add(value)` | Insert a value | O(log n) |
+| `search(value)` | Find a value | O(log n) |
+| `delete(value)` | Remove a node | O(log n) |
+| `find_height(node)` | Compute tree height | O(n) |
+| `print_tree(node)` | Print tree sideways (root on left) | O(n) |
+| `is_empty()` | Check if tree is empty | O(1) |
+
+Deletion handles three cases: no children, one child, and two children (inorder successor).
+
+### Usage
 
 ```python
-from binary_search_tree import BinarySearchTree
+from binarysearchtreecustom import BinarySearchTree
 
-# Create a new instance of BinarySearchTree
 bst = BinarySearchTree()
-
-# Add elements
 bst.add(5)
 bst.add(3)
-bst.add(7)
-bst.add(1)
-bst.add(9)
-
-# Search for an element
-print("Search for 3:", "Found" if bst.search(3) else "Not found")
-
-# Print the tree
-print("Binary Search Tree:")
+print(bst.search(3))  # True
 bst.print_tree(bst.root)
+```
+
+---
+
+## caller.py
+
+### Class: `BinarySearchTreeCaller`
+
+| Method | Description |
+|--------|-------------|
+| `main()` | Builds a BST, searches, prints, deletes a node, prints height |
+
+### Run
+
+```bash
+python3 caller.py
+```
