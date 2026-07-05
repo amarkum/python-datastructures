@@ -6,6 +6,12 @@ A hands-on Python repo for **data structures** and **interview topics**. Every f
 
 **Requirements:** Python 3.8+ · No external dependencies
 
+## System design
+
+Full interview guide in one place — load balancing, sharding, indexing, databases, API, hashing, encryption, and how **Uber, Instagram, Facebook, Airbnb, URL Shortener, and Real-Time Coding** platforms are built:
+
+→ **[system-design/README.md](./system-design/README.md)**
+
 ---
 
 ## Quick run
